@@ -88,13 +88,17 @@ else:
 # ==========================================
 st.markdown(f"""
 <style>
-	header {{visibility: hidden !important;}}
-	footer {{visibility: hidden !important;}}
-	[data-testid="stStatusWidget"] {{display: none !important;}}
-	div[class^="viewerBadge"] {{display: none !important;}}
-	div[class^="styles_viewerBadge"] {{display: none !important;}}
-	[data-testid="manage-app-button"] {{display: none !important;}}
-	[data-testid="stAppDeployButton"] {{display: none !important;}}
+    header {{visibility: hidden !important;}}
+    footer {{visibility: hidden !important;}}
+    #MainMenu {{visibility: hidden !important;}}
+    
+    [data-testid="stStatusWidget"] {{display: none !important;}}
+    [data-testid="manage-app-button"] {{display: none !important;}}
+    [data-testid="stAppDeployButton"] {{display: none !important;}}
+    .stAppDeployButton {{display: none !important;}}
+    #st-app-deploy-button {{display: none !important;}}
+    div[class^="viewerBadge"] {{display: none !important;}}
+    div[class^="styles_viewerBadge"] {{display: none !important;}}
 
     .stApp {{
         overflow-x: hidden !important;
