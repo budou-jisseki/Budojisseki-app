@@ -411,7 +411,6 @@ def on_b_full_attendance_change():
         st.session_state.b_et = init_settings['end_time']
         st.session_state.b_meal = "〇"
 
-
 # ==========================================
 # メイン画面の初期化
 # ==========================================
@@ -488,7 +487,7 @@ else:
     show_absent_action = init_settings.get('show_absent_action', 'True').lower() == 'true'
 
     if st.session_state.role == "管理者":
-        tab_new, tab_batch, tab_all, tab_edit = st.tabs(["新規入力", "まとめて入力", "全員一括入力", "過去の記録を編集"])
+        tab_new, tab_batch, tab_all, tab_edit = st.tabs(["新規入力", "個人・複数日入力", "全員一括入力", "過去の記録を編集"])
     else:
         tabs = st.tabs(["新規入力"])
         tab_new = tabs[0]
