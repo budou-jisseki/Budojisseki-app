@@ -64,7 +64,7 @@ SPINNER_HTML = """
 st.set_page_config(page_title="実績入力システム", page_icon="📝", layout="centered")
 
 # ==========================================
-# 状態管理の初期化（テーマ切り替えのため上部に移動）
+# 状態管理の初期化
 # ==========================================
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "role" not in st.session_state: st.session_state.role = ""
@@ -88,12 +88,10 @@ else:
 # ==========================================
 st.markdown(f"""
 <style>
-    /* 画面全体の横スクロール（右端切れ）を防止と背景色設定 */
     .stApp {{
         overflow-x: hidden !important;
         background-color: {bg_color} !important;
     }}
-    /* メインコンテナのデザイン（PC向け） */
     .block-container {{ 
         padding-top: 2.5rem !important; 
         padding-bottom: 1.5rem !important; 
@@ -114,7 +112,6 @@ st.markdown(f"""
     }}
     button[kind="primary"] {{ background-color: {accent_color} !important; color: white !important; }}
     
-    /* 入力要素が画面外に押し出されないように強制的に枠内に収める */
     input, select, textarea {{ 
         font-size: 16px !important; 
         width: 100% !important;
@@ -125,14 +122,12 @@ st.markdown(f"""
         max-width: 100% !important;
     }}
     
-    /* セレクトボックスの選択されている文字を太く大きく、テーマ色にする */
     div[data-baseweb="select"] > div {{
         font-size: 1.15rem !important;
         font-weight: bold !important;
         color: {accent_color} !important;
     }}
 
-    /* スマホ向けのレイアウト調整 */
     @media (max-width: 768px) {{
         .block-container {{
             max-width: 100vw !important; 
@@ -142,7 +137,6 @@ st.markdown(f"""
             padding-right: 1rem !important;
         }}
         .main-title {{ font-size: 1.3rem !important; }}
-        /* データフレーム（過去の記録編集など）だけは横スクロールを許可 */
         div[data-testid="stDataFrame"] {{ overflow-x: auto !important; width: 100% !important; }}
     }}
 </style>
@@ -351,7 +345,7 @@ def clear_text(key):
 init_settings = load_init_settings()
 
 # ==========================================
-# イベントコールバック処理 (全日欠席時に遅刻・早退のチェックを強制解除する)
+# イベントコールバック処理
 # ==========================================
 def on_attendance_change():
     am = st.session_state.am_ab_new
@@ -360,7 +354,7 @@ def on_attendance_change():
         st.session_state.st_new = ""
         st.session_state.et_new = ""
         st.session_state.meal_new = "×"
-        st.session_state.tardy_new = False  # 全日欠席時は遅刻早退チェックを外す
+        st.session_state.tardy_new = False
     elif am and not pm:
         st.session_state.st_new = init_settings['pm_start_time']
         st.session_state.et_new = init_settings['end_time']
@@ -379,7 +373,7 @@ def on_full_attendance_change():
         st.session_state.st_new = ""
         st.session_state.et_new = ""
         st.session_state.meal_new = "×"
-        st.session_state.tardy_new = False  # 全日欠席時は遅刻早退チェックを外す
+        st.session_state.tardy_new = False
     else:
         st.session_state.st_new = init_settings['start_time']
         st.session_state.et_new = init_settings['end_time']
@@ -392,7 +386,7 @@ def on_b_attendance_change():
         st.session_state.b_st = ""
         st.session_state.b_et = ""
         st.session_state.b_meal = "×"
-        st.session_state.b_tardy = False  # 全日欠席時は遅刻早退チェックを外す
+        st.session_state.b_tardy = False
     elif am and not pm:
         st.session_state.b_st = init_settings['pm_start_time']
         st.session_state.b_et = init_settings['end_time']
@@ -411,7 +405,7 @@ def on_b_full_attendance_change():
         st.session_state.b_st = ""
         st.session_state.b_et = ""
         st.session_state.b_meal = "×"
-        st.session_state.b_tardy = False  # 全日欠席時は遅刻早退チェックを外す
+        st.session_state.b_tardy = False
     else:
         st.session_state.b_st = init_settings['start_time']
         st.session_state.b_et = init_settings['end_time']
@@ -438,7 +432,6 @@ if not st.session_state.logged_in:
     st.write("### ログイン")
     password = st.text_input("パスワードを入力してください", type="password", autocomplete="new-password")
     
-    # config.iniからパスワードを取得（未設定の場合はデフォルト値を採用）
     staff_pw = init_settings.get('staff_password', '1111')
     admin_pw = init_settings.get('admin_password', '9999')
     
@@ -491,12 +484,11 @@ else:
     current_sheet_name = '就労B2' if st.session_state.service_type == '就労継続支援B型' else '生活介護'
     current_client_dict = all_client_dict.get(st.session_state.service_type, {})
     client_names = list(current_client_dict.keys()) if current_client_dict else ['未設定']
-
-    # configの表示設定読み込み
+    enable_record = init_settings.get('enable_daily_record', 'True').lower() == 'true'
     show_absent_action = init_settings.get('show_absent_action', 'True').lower() == 'true'
 
     if st.session_state.role == "管理者":
-        tab_new, tab_batch, tab_edit = st.tabs(["新規入力", "まとめて入力", "過去の記録を編集"])
+        tab_new, tab_batch, tab_all, tab_edit = st.tabs(["新規入力", "まとめて入力", "全員一括入力", "過去の記録を編集"])
     else:
         tabs = st.tabs(["新規入力"])
         tab_new = tabs[0]
@@ -592,8 +584,6 @@ else:
         meal_amount_val = ""
         if not is_all_absent and meal_provided == "〇":
             meal_amount_val = st.number_input("食事量", min_value=1, max_value=10, value=10, step=1, key="meal_amt_new")
-
-        enable_record = init_settings.get('enable_daily_record', 'True').lower() == 'true'
 
         if enable_record:
             st.write("### 1日の記録")
@@ -872,6 +862,101 @@ else:
                                     if k in st.session_state:
                                         del st.session_state[k]
                                 st.rerun()
+
+        with tab_all:
+            st.write("### 全員一括登録する内容を設定してください")
+            all_date = st.date_input("記載日", datetime.now().date(), key="date_all")
+            
+            valid_clients = [name for name in client_names if name != '未設定']
+            st.info(f"現在選択されているサービス（{st.session_state.service_type}）の登録者全員（{len(valid_clients)}名）に対して、以下の同じ内容で一括登録します。")
+            
+            if 'all_st' not in st.session_state: st.session_state.all_st = init_settings['start_time']
+            if 'all_et' not in st.session_state: st.session_state.all_et = init_settings['end_time']
+            if 'all_meal' not in st.session_state: st.session_state.all_meal = "〇"
+
+            st.write("### サービス提供状況 (デフォルト設定)")
+            col_alls, col_alle = st.columns(2)
+            with col_alls:
+                all_start = st.text_input("開始時間 (HH:MM)", key="all_st")
+            with col_alle:
+                all_end = st.text_input("終了時間 (HH:MM)", key="all_et")
+
+            col_allt1, col_allt2 = st.columns(2)
+            with col_allt1:
+                all_transport_out = st.radio("送迎往路", ["〇", "×"], horizontal=True, key='all_to')
+            with col_allt2:
+                all_transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key='all_tr')
+
+            all_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='all_meal')
+            
+            all_meal_amount_val = ""
+            if all_meal_provided == "〇":
+                all_meal_amount_val = st.number_input("食事量 (デフォルト)", min_value=1, max_value=10, value=10, step=1, key="all_meal_amt")
+
+            if enable_record:
+                st.write("### 1日の記録 (デフォルト設定)")
+                all_condition = st.selectbox("体調", CONDITION_OPTS, key='all_cond')
+                all_engagement = st.selectbox("作業の取り組み", ENGAGEMENT_OPTS, key='all_eng')
+                all_mental = st.selectbox("精神や情緒", MENTAL_OPTS, key='all_men')
+                all_support = st.selectbox("特別な支援", SUPPORT_OPTS, key='all_sup')
+            else:
+                all_condition = ""
+                all_engagement = ""
+                all_mental = ""
+                all_support = ""
+            
+            status_placeholder_all = st.empty()
+            submit_all = st.button(label='全員分を一括登録する', use_container_width=True, type='primary', key='submit_all')
+            
+            if submit_all:
+                if not valid_clients:
+                    st.warning('登録対象となる利用者がいません。')
+                else:
+                    status_placeholder_all.markdown(SPINNER_HTML, unsafe_allow_html=True)
+                    
+                    new_rows_df = []
+                    r_min = init_settings['rest_time_min']
+                    all_calc_time = calc_working_hours(all_start, all_end, r_min)
+                    
+                    for c_name in valid_clients:
+                        c_recipient_num = current_client_dict.get(c_name, "")
+                        
+                        new_rows_df.append([
+                            all_date.strftime('%Y-%m-%d'),
+                            c_name,
+                            c_recipient_num,
+                            "出席",
+                            all_start,
+                            all_end,
+                            all_calc_time,
+                            all_transport_out,
+                            all_transport_ret,
+                            all_meal_provided,
+                            str(all_meal_amount_val) if all_meal_provided == "〇" else "",
+                            all_condition,
+                            all_engagement,
+                            all_mental,
+                            all_support,
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            ""
+                        ])
+                    
+                    record_df = get_sheet_data(g_client, current_sheet_name)
+                    new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
+                    updated_df = pd.concat([record_df, new_df], ignore_index=True)
+                    updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
+                    
+                    if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                        st.session_state.success_msg = f'{len(new_rows_df)}名の実績を一括登録しました。「過去の記録を編集」タブから個別修正を行ってください。'
+                        reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
+                        for k in reset_keys:
+                            if k in st.session_state:
+                                del st.session_state[k]
+                        st.rerun()
 
         with tab_edit:
             today = datetime.now().date()
