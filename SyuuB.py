@@ -57,7 +57,7 @@ SPINNER_HTML = """
 </style>
 <div class="custom-spinner-box">
     <div class="custom-spinner"></div>
-    <strong style="color: #0c5460;">データをスプレッドシートに保存しています。このまま数秒お待ちください...</strong>
+    <strong style="color: #0c5460;">データをスプレッドシートに保存しています、このまま数秒お待ちください...</strong>
 </div>
 """
 
@@ -90,15 +90,6 @@ st.markdown(f"""
 <style>
     header {{visibility: hidden !important;}}
     footer {{visibility: hidden !important;}}
-    #MainMenu {{visibility: hidden !important;}}
-    
-    [data-testid="stStatusWidget"] {{display: none !important;}}
-    [data-testid="manage-app-button"] {{display: none !important;}}
-    [data-testid="stAppDeployButton"] {{display: none !important;}}
-    .stAppDeployButton {{display: none !important;}}
-    #st-app-deploy-button {{display: none !important;}}
-    div[class^="viewerBadge"] {{display: none !important;}}
-    div[class^="styles_viewerBadge"] {{display: none !important;}}
 
     .stApp {{
         overflow-x: hidden !important;
@@ -205,7 +196,7 @@ def load_client_master(client):
                 spreadsheet = client.open_by_key(SPREADSHEET_KEY)
                 new_sheet = spreadsheet.add_worksheet(title=MASTER_SHEET_NAME, rows="100", cols="3")
                 new_sheet.append_row(['利用者名', '受給者証番号', '就労／生活'])
-                st.warning(f"スプレッドシートに「{MASTER_SHEET_NAME}」シートを新しく作成しました。")
+                st.warning(f"スプレッドシートに「{MASTER_SHEET_NAME}」シートを新しく作成しました")
             except Exception:
                 pass
     return client_dict
@@ -345,7 +336,7 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
         return True
     except Exception as e:
         if 'WorksheetNotFound' in str(type(e)):
-            st.error(f"「{sheet_name}」シートが見つかりません。スプレッドシートに作成してください。")
+            st.error(f"「{sheet_name}」シートが見つかりません、スプレッドシートに作成してください")
         else:
             st.error(f"データの一括更新に失敗しました: {e}")
         return False
@@ -431,7 +422,7 @@ st.markdown(f'<h1 class="main-title">{app_title}</h1>', unsafe_allow_html=True)
 
 g_client = get_gspread_client()
 if g_client is None and st.session_state.logged_in:
-    st.error("認証情報が取得できません。設定を確認してください。")
+    st.error("認証情報が取得できません、設定を確認してください")
     st.stop()
 
 all_client_dict = load_client_master(g_client)
@@ -443,8 +434,8 @@ if not st.session_state.logged_in:
     st.write("### ログイン")
     password = st.text_input("パスワードを入力してください", type="password", autocomplete="new-password")
     
-    staff_pw = init_settings.get('staff_password', '1111')
-    admin_pw = init_settings.get('admin_password', '9999')
+    staff_pw = st.secrets["STAFF_PASSWORD"] if "STAFF_PASSWORD" in st.secrets else init_settings.get('staff_password', '1111')
+    admin_pw = st.secrets["ADMIN_PASSWORD"] if "ADMIN_PASSWORD" in st.secrets else init_settings.get('admin_password', '9999')
     
     if st.button("ログイン", type="primary", use_container_width=True):
         if password == staff_pw:
@@ -559,7 +550,7 @@ else:
         plan_end = ""
         if is_tardy_early:
             if st.session_state.service_type == "生活介護":
-                st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください。")
+                st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
                     tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="t_plan_new")
@@ -573,7 +564,7 @@ else:
                     with col_pe:
                         plan_end = st.text_input("計画終了時刻 (HH:MM)", key="p_et_new")
             else:
-                st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください。")
+                st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
 
         st.write("### サービス提供状況")
         if is_tardy_early:
@@ -732,7 +723,7 @@ else:
             b_plan_end = ""
             if b_is_tardy_early:
                 if st.session_state.service_type == "生活介護":
-                    st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください。")
+                    st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
                     col_btardy1, col_btardy2 = st.columns(2)
                     with col_btardy1:
                         b_tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_t_plan")
@@ -746,7 +737,7 @@ else:
                         with col_bpe:
                             b_plan_end = st.text_input("計画終了時刻 (HH:MM)", key="b_p_et")
                 else:
-                    st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください。")
+                    st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
             
             st.write("### サービス提供状況")
             if b_is_tardy_early:
@@ -797,7 +788,7 @@ else:
                 else:
                     start_date, end_date = batch_dates
                     if start_date.year != end_date.year or start_date.month != end_date.month:
-                        st.error('月を跨ぐ一括登録はできません。同じ月内で期間を指定してください。')
+                        st.error('月を跨ぐ一括登録はできません、同じ月内で期間を指定してください')
                     else:
                         status_placeholder_batch.markdown(SPINNER_HTML, unsafe_allow_html=True)
                         
@@ -859,7 +850,7 @@ else:
                             ])
                         
                         if not new_rows_df:
-                            st.warning('登録対象となる日がありません。（指定期間が全て除外日など）')
+                            st.warning('登録対象となる日がありません')
                         else:
                             record_df = get_sheet_data(g_client, current_sheet_name)
                             new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
@@ -879,7 +870,7 @@ else:
             all_date = st.date_input("記載日", datetime.now().date(), key="date_all")
             
             valid_clients = [name for name in client_names if name != '未設定']
-            st.info(f"現在選択されているサービス（{st.session_state.service_type}）の登録者全員（{len(valid_clients)}名）に対して、以下の同じ内容で一括登録します。")
+            st.info(f"現在選択されているサービスの登録者全員に対して、以下の同じ内容で一括登録します")
             
             if 'all_st' not in st.session_state: st.session_state.all_st = init_settings['start_time']
             if 'all_et' not in st.session_state: st.session_state.all_et = init_settings['end_time']
@@ -921,7 +912,7 @@ else:
             
             if submit_all:
                 if not valid_clients:
-                    st.warning('登録対象となる利用者がいません。')
+                    st.warning('登録対象となる利用者がいません')
                 else:
                     status_placeholder_all.markdown(SPINNER_HTML, unsafe_allow_html=True)
                     
@@ -962,7 +953,7 @@ else:
                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                     
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
-                        st.session_state.success_msg = f'{len(new_rows_df)}名の実績を一括登録しました。「過去の記録を編集」タブから個別修正を行ってください。'
+                        st.session_state.success_msg = f'{len(new_rows_df)}名の実績を一括登録しました、「過去の記録を編集」タブから個別修正を行ってください'
                         reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
                         for k in reset_keys:
                             if k in st.session_state:
