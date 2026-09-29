@@ -1,4 +1,5 @@
-﻿import streamlit as st
+﻿import json
+import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
@@ -251,9 +252,19 @@ def calc_working_hours(start_str, end_str, rest_min_str):
 @st.cache_resource
 def get_gspread_client():
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    if os.path.exists(JSON_KEY_FILE):
-        credentials = Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
-        return gspread.authorize(credentials)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds_dict = json.loads(st.secrets["gcp_service_account"])
+            credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            return gspread.authorize(credentials)
+        except Exception:
+            return None
+    elif os.path.exists(JSON_KEY_FILE):
+        try:
+            credentials = Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
+            return gspread.authorize(credentials)
+        except Exception:
+            return None
     else:
         try:
             credentials, _ = google.auth.default(scopes=scopes)
