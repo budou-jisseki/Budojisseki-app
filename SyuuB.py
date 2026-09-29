@@ -90,8 +90,11 @@ st.markdown(f"""
 <style>
 	header {{visibility: hidden !important;}}
 	footer {{visibility: hidden !important;}}
-	.viewerBadge_container {{display: none !important;}}
 	[data-testid="stStatusWidget"] {{display: none !important;}}
+	div[class^="viewerBadge"] {{display: none !important;}}
+	div[class^="styles_viewerBadge"] {{display: none !important;}}
+	[data-testid="manage-app-button"] {{display: none !important;}}
+	[data-testid="stAppDeployButton"] {{display: none !important;}}
 
     .stApp {{
         overflow-x: hidden !important;
