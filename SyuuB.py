@@ -131,6 +131,12 @@ st.markdown(f"""
         color: {accent_color} !important;
     }}
 
+    /* ラジオボタンをメニュー風に見せる調整 */
+    div[role="radiogroup"] {{
+        flex-wrap: wrap;
+        gap: 10px;
+    }}
+
     @media (max-width: 768px) {{
         .block-container {{
             max-width: 100vw !important; 
@@ -489,16 +495,26 @@ else:
     enable_record = init_settings.get('enable_daily_record', 'True').lower() == 'true'
     show_absent_action = init_settings.get('show_absent_action', 'True').lower() == 'true'
 
+    # メニューを st.tabs から st.radio に変更
     if st.session_state.role == "管理者":
-        tab_new, tab_batch, tab_all, tab_edit = st.tabs(["新規入力", "個人・複数日入力", "全員一括入力", "過去の記録を編集"])
+        menu_tabs = ["新規入力", "個人・複数日入力", "全員一括入力", "過去の記録を編集"]
     else:
-        tabs = st.tabs(["新規入力"])
-        tab_new = tabs[0]
+        menu_tabs = ["新規入力"]
+
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    selected_tab = st.radio(
+        "メニュー",
+        menu_tabs,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="selected_tab_menu"
+    )
+    st.markdown("<hr style='margin-top: 0px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
     # ----------------------------------------
-    # 新規入力タブ
+    # 新規入力画面
     # ----------------------------------------
-    with tab_new:
+    if selected_tab == "新規入力":
         if 'st_new' not in st.session_state: st.session_state.st_new = init_settings['start_time']
         if 'et_new' not in st.session_state: st.session_state.et_new = init_settings['end_time']
         if 'meal_new' not in st.session_state: st.session_state.meal_new = "〇"
@@ -662,11 +678,11 @@ else:
                 st.rerun()
 
     # ----------------------------------------
-    # 管理者のみのタブ
+    # 管理者のみの画面
     # ----------------------------------------
     if st.session_state.role == "管理者":
         
-        with tab_batch:
+        if selected_tab == "個人・複数日入力":
             if 'b_st' not in st.session_state: st.session_state.b_st = init_settings['start_time']
             if 'b_et' not in st.session_state: st.session_state.b_et = init_settings['end_time']
             if 'b_meal' not in st.session_state: st.session_state.b_meal = "〇"
@@ -865,7 +881,7 @@ else:
                                         del st.session_state[k]
                                 st.rerun()
 
-        with tab_all:
+        if selected_tab == "全員一括入力":
             st.write("### 全員一括登録する内容を設定してください")
             all_date = st.date_input("記載日", datetime.now().date(), key="date_all")
             
@@ -960,7 +976,7 @@ else:
                                 del st.session_state[k]
                         st.rerun()
 
-        with tab_edit:
+        if selected_tab == "過去の記録を編集":
             today = datetime.now().date()
             edit_dates = st.date_input('カレンダーから編集する期間', value=(today, today), key='edit_dates')
             
