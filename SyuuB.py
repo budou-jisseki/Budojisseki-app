@@ -90,6 +90,15 @@ st.markdown(f"""
 <style>
     header {{visibility: hidden !important;}}
     footer {{visibility: hidden !important;}}
+    #MainMenu {{visibility: hidden !important;}}
+    
+    [data-testid="stStatusWidget"] {{display: none !important;}}
+    [data-testid="manage-app-button"] {{display: none !important;}}
+    [data-testid="stAppDeployButton"] {{display: none !important;}}
+    .stAppDeployButton {{display: none !important;}}
+    #st-app-deploy-button {{display: none !important;}}
+    div[class^="viewerBadge"] {{display: none !important;}}
+    div[class^="styles_viewerBadge"] {{display: none !important;}}
 
     .stApp {{
         overflow-x: hidden !important;
@@ -159,7 +168,7 @@ def get_local_ip():
         return "127.0.0.1"
 
 def generate_qr(url):
-    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+    qr = qrcode.QRCode(box_size=8, border=2)
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="#2c3e50", back_color="white")
@@ -178,7 +187,7 @@ def load_client_master(client):
         if records:
             headers = list(records[0].keys())
             if '就労／生活' not in headers and '就労/生活' not in headers:
-                st.warning(f"スプレッドシートの1行目に「就労／生活」という列が見当たりません。現在の列名: {', '.join(headers)}")
+                st.warning(f"スプレッドシートの1行目に「就労／生活」という列が見当たりません、現在の列名: {', '.join(headers)}")
                 
         for row in records:
             name = str(row.get('利用者名', '')).strip()
@@ -452,9 +461,15 @@ if not st.session_state.logged_in:
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.write("スマホからアクセスする場合")
     app_url = os.environ.get('APP_URL')
-    network_url = app_url if app_url else f"http://{get_local_ip()}:8501"
-    st.markdown(f"<div style='font-size:0.9rem; color:#666;'>{network_url}</div>", unsafe_allow_html=True)
-    st.image(generate_qr(network_url), width=180)
+    base_url = app_url if app_url else f"http://{get_local_ip()}:8501"
+    
+    if "embed=true" not in base_url:
+        qr_url = base_url.rstrip("/") + "/?embed=true"
+    else:
+        qr_url = base_url
+        
+    st.markdown(f"<div style='font-size:0.9rem; color:#666;'>{qr_url}</div>", unsafe_allow_html=True)
+    st.image(generate_qr(qr_url), width=200)
 
 # ==========================================
 # メイン画面
