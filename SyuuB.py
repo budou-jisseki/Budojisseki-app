@@ -531,11 +531,17 @@ else:
         is_all_absent = full_absent
         
         absent_reason = ""
+        planned_absence = False
         absent_action = ""
+        
         if is_all_absent:
             absent_reason = st.selectbox("欠席理由", ABSENT_REASON_OPTS, key="ab_reason_new")
+            planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="plan_ab_new")
             if show_absent_action:
-                absent_action = st.text_input("欠席対応", key="ab_action_new")
+                if planned_absence:
+                    absent_action = st.text_input("欠席対応", placeholder="欠席利用計画有 (対応についての情報を入力してください)", key="ab_action_new")
+                else:
+                    absent_action = st.text_input("欠席対応", placeholder="対応内容があれば入力", key="ab_action_new")
 
         st.write("### 遅刻・早退")
         is_tardy_early = st.checkbox("遅刻・早退", key="tardy_new", disabled=is_all_absent)
@@ -631,6 +637,8 @@ else:
             final_remarks = remarks
             if is_all_absent:
                 final_remarks = f"【欠席理由: {absent_reason}】"
+                if planned_absence:
+                    final_remarks += "【利用計画あり】"
                 if show_absent_action and absent_action:
                     final_remarks += f"対応: {absent_action}"
                 if remarks:
@@ -667,7 +675,7 @@ else:
             
             if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                 st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new']
+                reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new']
                 for k in reset_keys:
                     if k in st.session_state:
                         del st.session_state[k]
@@ -706,11 +714,16 @@ else:
             is_b_all_absent = b_full_absent
             
             b_absent_reason = ""
+            b_planned_absence = False
             b_absent_action = ""
             if is_b_all_absent:
                 b_absent_reason = st.selectbox("欠席理由", ABSENT_REASON_OPTS, key="b_ab_reason")
+                b_planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="b_plan_ab")
                 if show_absent_action:
-                    b_absent_action = st.text_input("欠席対応", key="b_ab_action")
+                    if b_planned_absence:
+                        b_absent_action = st.text_input("欠席対応", placeholder="欠席利用計画有 (対応についての情報を入力してください)", key="b_ab_action")
+                    else:
+                        b_absent_action = st.text_input("欠席対応", placeholder="対応内容があれば入力", key="b_ab_action")
 
             st.write("### 遅刻・早退")
             b_is_tardy_early = st.checkbox("遅刻・早退", key="b_tardy", disabled=is_b_all_absent)
@@ -814,6 +827,8 @@ else:
                         b_final_remarks = b_remarks
                         if is_b_all_absent:
                             b_final_remarks = f"【欠席理由: {b_absent_reason}】"
+                            if b_planned_absence:
+                                b_final_remarks += "【利用計画あり】"
                             if show_absent_action and b_absent_action:
                                 b_final_remarks += f"対応: {b_absent_action}"
                             if b_remarks:
@@ -875,7 +890,7 @@ else:
                             
                             if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                 st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et']
+                                reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et']
                                 for k in reset_keys:
                                     if k in st.session_state:
                                         del st.session_state[k]
