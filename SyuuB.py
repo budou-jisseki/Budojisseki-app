@@ -373,6 +373,27 @@ def clear_text(key):
     if key in st.session_state:
         st.session_state[key] = ""
 
+# ==========================================
+# 欠席時対応加算のカウント用関数
+# ==========================================
+def check_absence_addition_count(client, sheet_name, client_name, target_date):
+    # スプレッドシートから最新データを取得
+    df = get_sheet_data(client, sheet_name)
+    if df.empty:
+        return 0
+    
+    # 対象年月（例: '2026-10'）を取得
+    target_month = target_date.strftime('%Y-%m')
+    
+    # 「対象者」「同月」「特記事項に【利用計画あり】が含まれる」レコードをカウント
+    count = df[
+        (df['名前'] == client_name) & 
+        (df['記載日'].str.startswith(target_month)) & 
+        (df['特記事項'].str.contains('【利用計画あり】', na=False))
+    ].shape[0]
+    
+    return count
+
 init_settings = load_init_settings()
 
 # ==========================================
@@ -537,6 +558,14 @@ else:
         if is_all_absent:
             absent_reason = st.selectbox("欠席理由", ABSENT_REASON_OPTS, key="ab_reason_new")
             planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="plan_ab_new")
+            
+            if planned_absence:
+                count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date)
+                if count >= 4:
+                    st.error(f"⚠️ 【警告】{client_name}さんの{record_date.month}月の「欠席時対応加算」は既に {count} 回記録されています。月4回の上限を超過します。")
+                else:
+                    st.info(f"💡 {client_name}さんの{record_date.month}月の「欠席時対応加算」は、現在 {count} 回算定済みです。（残り {4 - count} 回）")
+
             if show_absent_action:
                 if planned_absence:
                     absent_action = st.text_input("欠席対応", placeholder="欠席利用計画有 (対応についての情報を入力してください)", key="ab_action_new")
@@ -719,6 +748,16 @@ else:
             if is_b_all_absent:
                 b_absent_reason = st.selectbox("欠席理由", ABSENT_REASON_OPTS, key="b_ab_reason")
                 b_planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="b_plan_ab")
+                
+                if b_planned_absence:
+                    # 複数日選択時は開始日を基準に月を判定
+                    target_date = batch_dates[0] if isinstance(batch_dates, tuple) and len(batch_dates) > 0 else batch_dates
+                    b_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, target_date)
+                    if b_count >= 4:
+                        st.error(f"⚠️ 【警告】{b_client_name}さんの{target_date.month}月の「欠席時対応加算」は既に {b_count} 回記録されています。月4回の上限を超過します。")
+                    else:
+                        st.info(f"💡 {b_client_name}さんの{target_date.month}月の「欠席時対応加算」は、現在 {b_count} 回算定済みです。（残り {4 - b_count} 回）")
+
                 if show_absent_action:
                     if b_planned_absence:
                         b_absent_action = st.text_input("欠席対応", placeholder="欠席利用計画有 (対応についての情報を入力してください)", key="b_ab_action")
