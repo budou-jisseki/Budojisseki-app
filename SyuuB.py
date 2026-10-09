@@ -648,67 +648,78 @@ else:
         submit_btn = st.button(label='記録を保存する', use_container_width=True, type='primary', key="submit_new")
 
         if submit_btn:
-            status_placeholder_new.markdown(SPINNER_HTML, unsafe_allow_html=True)
+            allow_save = True
             
-            if is_all_absent:
-                attendance_status = "全日欠席"
-            elif is_nakanuke:
-                attendance_status = "中抜け"
-            elif is_tardy_early:
-                attendance_status = "遅刻・早退"
-            else:
-                attendance_status = "出席"
-
-            r_min = init_settings['rest_time_min']
-            calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end, r_min)
-            recipient_num = current_client_dict.get(client_name, "")
+            # --- 欠席時対応加算の上限チェック（新規入力用） ---
+            if is_all_absent and planned_absence:
+                current_count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date)
+                if current_count >= 4:
+                    st.error(f"⚠️ 【保存エラー】{client_name}さんの{record_date.month}月の「欠席時対応加算」は既に{current_count}回算定済みです。月4回の上限を超えるため保存できません。")
+                    allow_save = False
+            # ------------------------------------------------
             
-            final_remarks = remarks
-            if is_all_absent:
-                final_remarks = f"【欠席理由: {absent_reason}】"
-                if planned_absence:
-                    final_remarks += "【利用計画あり】"
-                if show_absent_action and absent_action:
-                    final_remarks += f"対応: {absent_action}"
-                if remarks:
-                    final_remarks += f" / {remarks}"
-            
-            row_data = [
-                record_date.strftime('%Y-%m-%d'), 
-                client_name, 
-                recipient_num, 
-                attendance_status,
-                "" if is_all_absent else input_start, 
-                "" if is_all_absent else input_end, 
-                calc_time,
-                "" if is_all_absent else transport_out, 
-                "" if is_all_absent else transport_ret, 
-                "" if is_all_absent else meal_provided,
-                "" if (is_all_absent or meal_provided == "×") else str(meal_amount_val),
-                "" if is_all_absent else condition,
-                "" if is_all_absent else engagement,
-                "" if is_all_absent else mental,
-                "" if is_all_absent else support,
-                final_remarks,
-                "" if is_all_absent else ("〇" if is_tardy_early else ""),
-                "" if is_all_absent else (tardy_planned if is_tardy_early else ""),
-                "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
-                "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
-                "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else "")
-            ]
-            
-            record_df = get_sheet_data(g_client, current_sheet_name)
-            new_df = pd.DataFrame([row_data], columns=COLUMNS)
-            updated_df = pd.concat([record_df, new_df], ignore_index=True)
-            updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
-            
-            if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
-                st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new']
-                for k in reset_keys:
-                    if k in st.session_state:
-                        del st.session_state[k]
-                st.rerun()
+            if allow_save:
+                status_placeholder_new.markdown(SPINNER_HTML, unsafe_allow_html=True)
+                
+                if is_all_absent:
+                    attendance_status = "全日欠席"
+                elif is_nakanuke:
+                    attendance_status = "中抜け"
+                elif is_tardy_early:
+                    attendance_status = "遅刻・早退"
+                else:
+                    attendance_status = "出席"
+    
+                r_min = init_settings['rest_time_min']
+                calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end, r_min)
+                recipient_num = current_client_dict.get(client_name, "")
+                
+                final_remarks = remarks
+                if is_all_absent:
+                    final_remarks = f"【欠席理由: {absent_reason}】"
+                    if planned_absence:
+                        final_remarks += "【利用計画あり】"
+                    if show_absent_action and absent_action:
+                        final_remarks += f"対応: {absent_action}"
+                    if remarks:
+                        final_remarks += f" / {remarks}"
+                
+                row_data = [
+                    record_date.strftime('%Y-%m-%d'), 
+                    client_name, 
+                    recipient_num, 
+                    attendance_status,
+                    "" if is_all_absent else input_start, 
+                    "" if is_all_absent else input_end, 
+                    calc_time,
+                    "" if is_all_absent else transport_out, 
+                    "" if is_all_absent else transport_ret, 
+                    "" if is_all_absent else meal_provided,
+                    "" if (is_all_absent or meal_provided == "×") else str(meal_amount_val),
+                    "" if is_all_absent else condition,
+                    "" if is_all_absent else engagement,
+                    "" if is_all_absent else mental,
+                    "" if is_all_absent else support,
+                    final_remarks,
+                    "" if is_all_absent else ("〇" if is_tardy_early else ""),
+                    "" if is_all_absent else (tardy_planned if is_tardy_early else ""),
+                    "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
+                    "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
+                    "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else "")
+                ]
+                
+                record_df = get_sheet_data(g_client, current_sheet_name)
+                new_df = pd.DataFrame([row_data], columns=COLUMNS)
+                updated_df = pd.concat([record_df, new_df], ignore_index=True)
+                updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
+                
+                if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                    st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
+                    reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new']
+                    for k in reset_keys:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.rerun()
 
     # ----------------------------------------
     # 管理者のみの画面
@@ -847,93 +858,118 @@ else:
                     if start_date.year != end_date.year or start_date.month != end_date.month:
                         st.error('月を跨ぐ一括登録はできません、同じ月内で期間を指定してください')
                     else:
-                        status_placeholder_batch.markdown(SPINNER_HTML, unsafe_allow_html=True)
+                        allow_save = True
+                        adding_days = 0
                         
-                        if is_b_all_absent:
-                            b_attendance = "全日欠席"
-                        elif b_is_nakanuke:
-                            b_attendance = "中抜け"
-                        elif b_is_tardy_early:
-                            b_attendance = "遅刻・早退"
-                        else:
-                            b_attendance = "出席"
-
-                        new_rows_df = []
-                        b_recipient_num = current_client_dict.get(b_client_name, "")
-                        r_min = init_settings['rest_time_min']
-                        b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end, r_min)
-                        
-                        b_final_remarks = b_remarks
-                        if is_b_all_absent:
-                            b_final_remarks = f"【欠席理由: {b_absent_reason}】"
-                            if b_planned_absence:
-                                b_final_remarks += "【利用計画あり】"
-                            if show_absent_action and b_absent_action:
-                                b_final_remarks += f"対応: {b_absent_action}"
-                            if b_remarks:
-                                b_final_remarks += f" / {b_remarks}"
-                        
-                        for i in range((end_date - start_date).days + 1):
-                            current_date = start_date + timedelta(days=i)
-                            
-                            exclude_it = False
-                            if exc_1_checked and is_day_excluded(current_date, label1):
-                                exclude_it = True
-                            if exc_2_checked and is_day_excluded(current_date, label2):
-                                exclude_it = True
-
-                            if exclude_it:
-                                continue
+                        # --- 欠席時対応加算の上限チェック（一括入力用） ---
+                        if is_b_all_absent and b_planned_absence:
+                            for i in range((end_date - start_date).days + 1):
+                                current_date = start_date + timedelta(days=i)
                                 
-                            is_saturday = (current_date.weekday() == 5)
-                            if is_saturday:
-                                current_start = init_settings.get('SAT_start_time', '10:00')
-                                current_end = init_settings.get('SAT_end_time', '12:00')
-                                current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end, r_min)
-                            else:
-                                current_start = b_start
-                                current_end = b_end
-                                current_calc_time = b_calc_time
-                            
-                            new_rows_df.append([
-                                current_date.strftime('%Y-%m-%d'),
-                                b_client_name,
-                                b_recipient_num,
-                                b_attendance,
-                                "" if is_b_all_absent else current_start,
-                                "" if is_b_all_absent else current_end,
-                                current_calc_time,
-                                "" if is_b_all_absent else b_transport_out,
-                                "" if is_b_all_absent else b_transport_ret,
-                                "" if is_b_all_absent else b_meal_provided,
-                                "" if (is_b_all_absent or b_meal_provided == "×") else str(b_meal_amount_val),
-                                "" if is_b_all_absent else b_condition,
-                                "" if is_b_all_absent else b_engagement,
-                                "" if is_b_all_absent else b_mental,
-                                "" if is_b_all_absent else b_support,
-                                b_final_remarks,
-                                "" if is_b_all_absent else ("〇" if b_is_tardy_early else ""),
-                                "" if is_b_all_absent else (b_tardy_planned if b_is_tardy_early else ""),
-                                "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
-                                "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
-                                "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else "")
-                            ])
+                                exclude_it = False
+                                if exc_1_checked and is_day_excluded(current_date, label1):
+                                    exclude_it = True
+                                if exc_2_checked and is_day_excluded(current_date, label2):
+                                    exclude_it = True
+
+                                if not exclude_it:
+                                    adding_days += 1
+                                    
+                            if adding_days > 0:
+                                current_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, start_date)
+                                if current_count + adding_days > 4:
+                                    st.error(f"⚠️ 【保存エラー】{b_client_name}さんの{start_date.month}月の「欠席時対応加算」は現在{current_count}回算定済みです。今回{adding_days}日分を追加すると上限(月4回)を超えるため保存できません。")
+                                    allow_save = False
+                        # ------------------------------------------------
                         
-                        if not new_rows_df:
-                            st.warning('登録対象となる日がありません')
-                        else:
-                            record_df = get_sheet_data(g_client, current_sheet_name)
-                            new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
-                            updated_df = pd.concat([record_df, new_df], ignore_index=True)
-                            updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
+                        if allow_save:
+                            status_placeholder_batch.markdown(SPINNER_HTML, unsafe_allow_html=True)
                             
-                            if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
-                                st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et']
-                                for k in reset_keys:
-                                    if k in st.session_state:
-                                        del st.session_state[k]
-                                st.rerun()
+                            if is_b_all_absent:
+                                b_attendance = "全日欠席"
+                            elif b_is_nakanuke:
+                                b_attendance = "中抜け"
+                            elif b_is_tardy_early:
+                                b_attendance = "遅刻・早退"
+                            else:
+                                b_attendance = "出席"
+    
+                            new_rows_df = []
+                            b_recipient_num = current_client_dict.get(b_client_name, "")
+                            r_min = init_settings['rest_time_min']
+                            b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end, r_min)
+                            
+                            b_final_remarks = b_remarks
+                            if is_b_all_absent:
+                                b_final_remarks = f"【欠席理由: {b_absent_reason}】"
+                                if b_planned_absence:
+                                    b_final_remarks += "【利用計画あり】"
+                                if show_absent_action and b_absent_action:
+                                    b_final_remarks += f"対応: {b_absent_action}"
+                                if b_remarks:
+                                    b_final_remarks += f" / {b_remarks}"
+                            
+                            for i in range((end_date - start_date).days + 1):
+                                current_date = start_date + timedelta(days=i)
+                                
+                                exclude_it = False
+                                if exc_1_checked and is_day_excluded(current_date, label1):
+                                    exclude_it = True
+                                if exc_2_checked and is_day_excluded(current_date, label2):
+                                    exclude_it = True
+    
+                                if exclude_it:
+                                    continue
+                                    
+                                is_saturday = (current_date.weekday() == 5)
+                                if is_saturday:
+                                    current_start = init_settings.get('SAT_start_time', '10:00')
+                                    current_end = init_settings.get('SAT_end_time', '12:00')
+                                    current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end, r_min)
+                                else:
+                                    current_start = b_start
+                                    current_end = b_end
+                                    current_calc_time = b_calc_time
+                                
+                                new_rows_df.append([
+                                    current_date.strftime('%Y-%m-%d'),
+                                    b_client_name,
+                                    b_recipient_num,
+                                    b_attendance,
+                                    "" if is_b_all_absent else current_start,
+                                    "" if is_b_all_absent else current_end,
+                                    current_calc_time,
+                                    "" if is_b_all_absent else b_transport_out,
+                                    "" if is_b_all_absent else b_transport_ret,
+                                    "" if is_b_all_absent else b_meal_provided,
+                                    "" if (is_b_all_absent or b_meal_provided == "×") else str(b_meal_amount_val),
+                                    "" if is_b_all_absent else b_condition,
+                                    "" if is_b_all_absent else b_engagement,
+                                    "" if is_b_all_absent else b_mental,
+                                    "" if is_b_all_absent else b_support,
+                                    b_final_remarks,
+                                    "" if is_b_all_absent else ("〇" if b_is_tardy_early else ""),
+                                    "" if is_b_all_absent else (b_tardy_planned if b_is_tardy_early else ""),
+                                    "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
+                                    "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
+                                    "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else "")
+                                ])
+                            
+                            if not new_rows_df:
+                                st.warning('登録対象となる日がありません')
+                            else:
+                                record_df = get_sheet_data(g_client, current_sheet_name)
+                                new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
+                                updated_df = pd.concat([record_df, new_df], ignore_index=True)
+                                updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
+                                
+                                if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                                    st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
+                                    reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et']
+                                    for k in reset_keys:
+                                        if k in st.session_state:
+                                            del st.session_state[k]
+                                    st.rerun()
 
         if selected_tab == "全員一括入力":
             st.write("### 全員一括登録する内容を設定してください")
