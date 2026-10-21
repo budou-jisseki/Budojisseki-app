@@ -235,7 +235,6 @@ def load_init_settings():
             pass
     return settings
 
-# 🚨 修正: 休憩時間の減算をなくし、シンプルに終了時間から開始時間を引く仕様に変更
 def calc_working_hours(start_str, end_str):
     if not start_str or not end_str:
         return ""
@@ -340,7 +339,6 @@ def get_sheet_data(client, sheet_name):
             if col not in df.columns:
                 df[col] = ''
         df = df.astype(str)
-        # 過去の「全日欠席」データを「欠席」に自動置換
         if '出欠状況' in df.columns:
             df['出欠状況'] = df['出欠状況'].replace('全日欠席', '欠席')
         return df[COLUMNS]
@@ -352,16 +350,13 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
         
-        # 更新するデータを準備（タイトル行 ＋ データ行）
         update_data = [df.columns.values.tolist()] + df.values.tolist()
         
-        # A1セルから一気に上書きする
         try:
             sheet.update('A1', update_data)
         except TypeError:
             sheet.update(update_data)
         
-        # データが減った場合（過去の記録の削除時など）に、下部に残る古い残骸のみをクリアする
         num_rows = len(update_data)
         try:
             sheet.batch_clear([f"A{num_rows + 1}:Z"])
@@ -563,7 +558,6 @@ else:
         client_name = st.selectbox("名前（利用者）", client_names, key="name_new", label_visibility="collapsed")
         
         st.write("### 出欠状況")
-        # 「全日欠席」表記を「欠席」に統一
         full_absent = st.checkbox("欠席", key="full_ab_new", on_change=on_full_attendance_change)
         is_all_absent = full_absent
         
@@ -690,7 +684,6 @@ else:
                     else:
                         attendance_status = "出席"
         
-                    # 🚨 修正: 休憩時間の減算をなくし、そのまま開始時間と終了時間を渡す
                     calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end)
                     recipient_num = current_client_dict.get(client_name, "")
                     
@@ -917,7 +910,6 @@ else:
         
                                 new_rows_df = []
                                 b_recipient_num = current_client_dict.get(b_client_name, "")
-                                # 🚨 修正: 休憩時間の減算をなくす
                                 b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end)
                                 
                                 b_final_remarks = b_remarks
@@ -1066,7 +1058,6 @@ else:
                             st.error("スプレッドシートのデータ取得に失敗したため、保存処理を中止しました。時間をおいて再度お試しください。")
                         else:
                             new_rows_df = []
-                            # 🚨 修正: 休憩時間の減算をなくす
                             all_calc_time = calc_working_hours(all_start, all_end)
                             
                             for i in range((end_date - start_date).days + 1):
@@ -1140,7 +1131,6 @@ else:
             if len(edit_dates) == 2:
                 start_date, end_date = edit_dates
                 
-                # 新しい日付が選択されたか、保存後にリロードが必要な場合のみデータを再取得する
                 if ('edit_last_start' not in st.session_state or 
                     st.session_state.edit_last_start != start_date or 
                     st.session_state.get('edit_last_end') != end_date or
@@ -1160,7 +1150,6 @@ else:
                         
                         target_records = record_df[mask].copy()
                         
-                        # 編集用のキャッシュと、復元用の元データをそれぞれ保存
                         st.session_state.edit_cache = target_records[COLUMNS].copy()
                         st.session_state.edit_original = target_records[COLUMNS].copy()
                         st.session_state.full_record_df = record_df.copy()
@@ -1173,7 +1162,6 @@ else:
                     st.session_state.edit_last_end = end_date
                     st.session_state.edit_need_reload = False
                     
-                    # 再取得した際は、画面上のエディタを確実にリセットする
                     if 'data_editor' in st.session_state:
                         del st.session_state['data_editor']
 
@@ -1212,14 +1200,12 @@ else:
                             
                             cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']
                             
-                            # 1. ユーザーが「欠席」に変更した場合 → 時間などをクリア
                             if current_status == '欠席':
                                 for col in cols_to_clear:
                                     if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
                                         edited_df.at[idx, col] = ''
                                         changed_by_system = True
                             
-                            # 2. 間違えて「欠席」にした後、「出席」などに戻した場合 → オリジナルデータから復元
                             elif cached_status == '欠席' and current_status != '欠席':
                                 for col in cols_to_clear:
                                     if idx in original_df.index:
@@ -1227,6 +1213,19 @@ else:
                                         if pd.notna(orig_val):
                                             edited_df.at[idx, col] = orig_val
                                             changed_by_system = True
+                            
+                            # 🚨 修正: 欠席以外の場合で、時間が編集されたら算定時間を自動再計算するロジックを追加
+                            if current_status != '欠席':
+                                cur_st = str(edited_df.at[idx, '開始時間']).strip()
+                                cur_et = str(edited_df.at[idx, '終了時間']).strip()
+                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip()
+                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip()
+                                
+                                if cur_st != cached_st or cur_et != cached_et:
+                                    new_calc = calc_working_hours(cur_st, cur_et)
+                                    if str(edited_df.at[idx, '算定時間数']).strip() != new_calc:
+                                        edited_df.at[idx, '算定時間数'] = new_calc
+                                        changed_by_system = True
                         
                         if changed_by_system:
                             st.session_state.edit_cache = edited_df.copy()
@@ -1255,7 +1254,7 @@ else:
                                 edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
                                 
                             record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
-                            record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
+                            record_df.drop(columns=['比较用日付'], inplace=True, errors='ignore')
                             
                             record_df = record_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                             record_df = record_df.sort_values(by=['記載日', '名前']).reset_index(drop=True)
