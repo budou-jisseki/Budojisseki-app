@@ -21,12 +21,14 @@ JSON_KEY_FILE = 'secret.json'
 SPREADSHEET_KEY = '1JQe44mjZAUo2oAyVANerXpgXjeM5z_XvJZIjB_TrN5U'
 MASTER_SHEET_NAME = '利用者マスタ'
 
+# 🚨 修正: V列とW列に「中抜け開始時刻」「中抜け終了時刻」を追加
 COLUMNS = [
     '記載日', '名前', '受給者証番号', '出欠状況',
     '開始時間', '終了時間', '算定時間数',
     '送迎往路', '送迎復路', '食事提供', '食事量',
     '体調', '作業の取り組み', '精神や情緒', '特別な支援', '特記事項',
-    '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻'
+    '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
+    '中抜け開始時刻', '中抜け終了時刻'
 ]
 
 CONDITION_OPTS = ['良好', '普通', '不良', '服薬忘れあり', 'その他']
@@ -235,15 +237,30 @@ def load_init_settings():
             pass
     return settings
 
-def calc_working_hours(start_str, end_str):
+# 🚨 修正: 中抜け時間を受け取り、減算する計算ロジック
+def calc_working_hours(start_str, end_str, n_start_str="", n_end_str=""):
     if not start_str or not end_str:
         return ""
     try:
         start_dt = datetime.strptime(start_str, "%H:%M")
         end_dt = datetime.strptime(end_str, "%H:%M")
         
+        # 滞在時間（分）
         diff_min = (end_dt - start_dt).total_seconds() / 60
-        actual_min = max(0, diff_min)
+        
+        # 中抜け時間（分）
+        nakanuke_min = 0
+        if n_start_str and n_end_str:
+            try:
+                n_st_dt = datetime.strptime(n_start_str, "%H:%M")
+                n_et_dt = datetime.strptime(n_end_str, "%H:%M")
+                nakanuke_min = (n_et_dt - n_st_dt).total_seconds() / 60
+                if nakanuke_min < 0:
+                    nakanuke_min = 0
+            except Exception:
+                pass
+                
+        actual_min = max(0, diff_min - nakanuke_min)
         
         h = int(actual_min // 60)
         m = int(actual_min % 60)
@@ -335,6 +352,7 @@ def get_sheet_data(client, sheet_name):
         if not records:
             return pd.DataFrame(columns=COLUMNS)
         df = pd.DataFrame(records)
+        # 不足している列（中抜けなど追加した場合）を空文字で補填
         for col in COLUMNS:
             if col not in df.columns:
                 df[col] = ''
@@ -606,13 +624,19 @@ else:
             else:
                 st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
 
+        # 🚨 修正: 中抜け欄に開始・終了時刻の入力枠を追加
         st.write("### 中抜け")
         is_nakanuke = st.checkbox("中抜け", key="nakanuke_new", disabled=is_all_absent)
+        nakanuke_start = ""
+        nakanuke_end = ""
         if is_nakanuke:
-            if st.session_state.service_type == "生活介護":
-                st.warning("⚠️ 中抜けの時刻を「特記事項」欄に記入してください")
-            else:
-                st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
+            col_ns, col_ne = st.columns(2)
+            with col_ns:
+                nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="n_st_new")
+            with col_ne:
+                nakanuke_end = st.text_input("中抜け終了時刻 (HH:MM)", key="n_et_new")
+            
+            st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
 
         st.write("### サービス提供状況")
         if is_tardy_early or is_nakanuke:
@@ -684,7 +708,8 @@ else:
                     else:
                         attendance_status = "出席"
         
-                    calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end)
+                    # 🚨 修正: 計算関数に中抜け時間を渡して減算させる
+                    calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end, nakanuke_start, nakanuke_end)
                     recipient_num = current_client_dict.get(client_name, "")
                     
                     final_remarks = remarks
@@ -718,7 +743,9 @@ else:
                         "" if is_all_absent else (tardy_planned if is_tardy_early else ""),
                         "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
                         "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
-                        "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else "")
+                        "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else ""),
+                        "" if is_all_absent else nakanuke_start, # V列: 中抜け開始
+                        "" if is_all_absent else nakanuke_end    # W列: 中抜け終了
                     ]
                     
                     new_df = pd.DataFrame([row_data], columns=COLUMNS)
@@ -727,7 +754,7 @@ else:
                     
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                         st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new']
+                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
                         for k in reset_keys:
                             if k in st.session_state:
                                 del st.session_state[k]
@@ -810,13 +837,18 @@ else:
                 else:
                     st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
             
+            # 🚨 修正: 一括入力画面の中抜け欄にも開始・終了時刻の枠を追加
             st.write("### 中抜け")
             b_is_nakanuke = st.checkbox("中抜け", key="b_nakanuke", disabled=is_b_all_absent)
+            b_nakanuke_start = ""
+            b_nakanuke_end = ""
             if b_is_nakanuke:
-                if st.session_state.service_type == "生活介護":
-                    st.warning("⚠️ 中抜けの時刻を「特記事項」欄に記入してください")
-                else:
-                    st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
+                col_bns, col_bne = st.columns(2)
+                with col_bns:
+                    b_nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="b_n_st")
+                with col_bne:
+                    b_nakanuke_end = st.text_input("中抜け終了時刻 (HH:MM)", key="b_n_et")
+                st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
             
             st.write("### サービス提供状況")
             if b_is_tardy_early or b_is_nakanuke:
@@ -910,7 +942,7 @@ else:
         
                                 new_rows_df = []
                                 b_recipient_num = current_client_dict.get(b_client_name, "")
-                                b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end)
+                                b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end, b_nakanuke_start, b_nakanuke_end)
                                 
                                 b_final_remarks = b_remarks
                                 if is_b_all_absent:
@@ -938,7 +970,7 @@ else:
                                     if is_saturday:
                                         current_start = init_settings.get('SAT_start_time', '10:00')
                                         current_end = init_settings.get('SAT_end_time', '12:00')
-                                        current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end)
+                                        current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end, b_nakanuke_start, b_nakanuke_end)
                                     else:
                                         current_start = b_start
                                         current_end = b_end
@@ -965,7 +997,9 @@ else:
                                         "" if is_b_all_absent else (b_tardy_planned if b_is_tardy_early else ""),
                                         "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
                                         "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
-                                        "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else "")
+                                        "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
+                                        "" if is_b_all_absent else b_nakanuke_start,
+                                        "" if is_b_all_absent else b_nakanuke_end
                                     ])
                                 
                                 if not new_rows_df:
@@ -977,7 +1011,7 @@ else:
                                     
                                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                         st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et']
+                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
                                         for k in reset_keys:
                                             if k in st.session_state:
                                                 del st.session_state[k]
@@ -1106,7 +1140,9 @@ else:
                                         "",
                                         "",
                                         "",
-                                        ""
+                                        "",
+                                        "", # V列 (中抜けなし)
+                                        ""  # W列
                                     ])
                             
                             if not new_rows_df:
@@ -1187,6 +1223,8 @@ else:
                                 "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" else None,
                                 "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" else None,
                                 "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" else None,
+                                "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"), # 🚨 エディタに表示追加
+                                "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"), # 🚨 エディタに表示追加
                             },
                             num_rows="dynamic", use_container_width=True, key="data_editor"
                         )
@@ -1198,7 +1236,7 @@ else:
                             current_status = edited_df.at[idx, '出欠状況']
                             cached_status = st.session_state.edit_cache.at[idx, '出欠状況']
                             
-                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']
+                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
                             
                             if current_status == '欠席':
                                 for col in cols_to_clear:
@@ -1214,15 +1252,21 @@ else:
                                             edited_df.at[idx, col] = orig_val
                                             changed_by_system = True
                             
-                            # 🚨 修正: 欠席以外の場合で、時間が編集されたら算定時間を自動再計算するロジックを追加
+                            # 🚨 修正: 開始/終了時刻 または 中抜け時刻の変更を検知して自動再計算
                             if current_status != '欠席':
                                 cur_st = str(edited_df.at[idx, '開始時間']).strip()
                                 cur_et = str(edited_df.at[idx, '終了時間']).strip()
+                                cur_nst = str(edited_df.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in edited_df.columns else ""
+                                cur_net = str(edited_df.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in edited_df.columns else ""
+                                
                                 cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip()
                                 cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip()
+                                cached_nst = str(st.session_state.edit_cache.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in st.session_state.edit_cache.columns else ""
+                                cached_net = str(st.session_state.edit_cache.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in st.session_state.edit_cache.columns else ""
                                 
-                                if cur_st != cached_st or cur_et != cached_et:
-                                    new_calc = calc_working_hours(cur_st, cur_et)
+                                if (cur_st != cached_st or cur_et != cached_et or 
+                                    cur_nst != cached_nst or cur_net != cached_net):
+                                    new_calc = calc_working_hours(cur_st, cur_et, cur_nst, cur_net)
                                     if str(edited_df.at[idx, '算定時間数']).strip() != new_calc:
                                         edited_df.at[idx, '算定時間数'] = new_calc
                                         changed_by_system = True
@@ -1254,7 +1298,7 @@ else:
                                 edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
                                 
                             record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
-                            record_df.drop(columns=['比较用日付'], inplace=True, errors='ignore')
+                            record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
                             
                             record_df = record_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                             record_df = record_df.sort_values(by=['記載日', '名前']).reset_index(drop=True)
