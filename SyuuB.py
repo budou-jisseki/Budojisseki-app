@@ -21,7 +21,7 @@ JSON_KEY_FILE = 'secret.json'
 SPREADSHEET_KEY = '1JQe44mjZAUo2oAyVANerXpgXjeM5z_XvJZIjB_TrN5U'
 MASTER_SHEET_NAME = '利用者マスタ'
 
-COLUMNS = [
+COLUMNS_ADULT = [
     '記載日', '名前', '受給者証番号', '出欠状況',
     '開始時間', '終了時間', '算定時間数',
     '送迎往路', '送迎復路', '食事提供', '食事量',
@@ -30,10 +30,25 @@ COLUMNS = [
     '中抜け開始時刻', '中抜け終了時刻'
 ]
 
+COLUMNS_CHILD = [
+    '記載日', '名前', '受給者証番号', '出欠状況',
+    '開始時間', '終了時間', '算定時間数',
+    '送迎往路', '送迎復路', '食事提供', '食事量',
+    '体調', '活動の様子', '機嫌・情緒', '特別な支援', '特記事項',
+    '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
+    '中抜け開始時刻', '中抜け終了時刻'
+]
+
 CONDITION_OPTS = ['良好', '普通', '不良', '服薬忘れあり', 'その他']
 ENGAGEMENT_OPTS = ['集中して取り組めた', '声かけにより取り組めた', '休みがちだった', '参加できなかった', 'その他']
 MENTAL_OPTS = ['安定している', '少し不安定', '気分の落ち込みあり', 'イライラしていた', 'その他']
 SUPPORT_OPTS = ['通常支援のみ', '個別面談を実施した', '体調不良による静養対応', '他機関との連絡調整', 'その他']
+
+CONDITION_OPTS_CHILD = ['良好', '普通', '不良', 'その他']
+ACTIVITY_OPTS = ['意欲的に参加できた', '声かけにより参加できた', '落ち着きがなかった', '参加できなかった', 'その他']
+MOOD_OPTS = ['安定している', '少し不安定', '興奮気味だった', '機嫌が悪かった', 'その他']
+SUPPORT_OPTS_CHILD = ['通常支援のみ', '個別対応を実施した', 'クールダウンを行った', '保護者と連携した', 'その他']
+
 ABSENT_REASON_OPTS = ['体調不良', '通院', '家庭の事情', '無断欠席', 'その他']
 
 SPINNER_HTML = """
@@ -73,6 +88,7 @@ if "success_msg" not in st.session_state: st.session_state.success_msg = None
 if 'remarks_new' not in st.session_state: st.session_state.remarks_new = ""
 if 'remarks_batch' not in st.session_state: st.session_state.remarks_batch = ""
 if "service_type" not in st.session_state: st.session_state.service_type = "就労継続支援B型"
+if "show_all_services" not in st.session_state: st.session_state.show_all_services = False # 🚨 ステルス機能用フラグ
 
 # ==========================================
 # テーマカラーの動的設定
@@ -80,9 +96,36 @@ if "service_type" not in st.session_state: st.session_state.service_type = "就�
 if st.session_state.service_type == "就労継続支援B型":
     bg_color = "#f0f8ff"
     accent_color = "#1976d2"
-else:
+elif st.session_state.service_type == "生活介護":
     bg_color = "#fff5f0"
     accent_color = "#e65100"
+elif st.session_state.service_type == "児童発達支援":
+    bg_color = "#f1f8e9"
+    accent_color = "#33691e"
+elif st.session_state.service_type == "放課後等デイサービス":
+    bg_color = "#fce4ec"
+    accent_color = "#c2185b"
+
+# ==========================================
+# サービス共通の項目変数セットアップ
+# ==========================================
+is_child_service = st.session_state.service_type in ["児童発達支援", "放課後等デイサービス"]
+current_columns = COLUMNS_CHILD if is_child_service else COLUMNS_ADULT
+
+if is_child_service:
+    cond_opts = CONDITION_OPTS_CHILD
+    eng_label = "活動の様子"
+    eng_opts = ACTIVITY_OPTS
+    men_label = "機嫌・情緒"
+    men_opts = MOOD_OPTS
+    sup_opts = SUPPORT_OPTS_CHILD
+else:
+    cond_opts = CONDITION_OPTS
+    eng_label = "作業の取り組み"
+    eng_opts = ENGAGEMENT_OPTS
+    men_label = "精神や情緒"
+    men_opts = MENTAL_OPTS
+    sup_opts = SUPPORT_OPTS
 
 # ==========================================
 # デザイン・UIカスタマイズ
@@ -174,7 +217,7 @@ def generate_qr(url):
     return buf.getvalue()
 
 def load_client_master(client):
-    client_dict = {'就労継続支援B型': {}, '生活介護': {}}
+    client_dict = {'就労継続支援B型': {}, '生活介護': {}, '児童発達支援': {}, '放課後等デイサービス': {}}
     if client is None:
         return client_dict
     try:
@@ -196,6 +239,10 @@ def load_client_master(client):
                     client_dict['就労継続支援B型'][name] = num
                 elif category == '22':
                     client_dict['生活介護'][name] = num
+                elif category == '11':
+                    client_dict['児童発達支援'][name] = num
+                elif category == '12':
+                    client_dict['放課後等デイサービス'][name] = num
     except Exception as e:
         if 'WorksheetNotFound' in str(type(e)):
             try:
@@ -291,25 +338,26 @@ def is_day_excluded(date_obj, label):
 @st.cache_resource
 def get_gspread_client():
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    if "gcp_service_account" in st.secrets:
-        try:
+    try:
+        if "gcp_service_account" in st.secrets:
             creds_dict = json.loads(st.secrets["gcp_service_account"])
             credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             return gspread.authorize(credentials)
-        except Exception:
-            return None
-    elif os.path.exists(JSON_KEY_FILE):
+    except Exception:
+        pass
+        
+    if os.path.exists(JSON_KEY_FILE):
         try:
             credentials = Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
             return gspread.authorize(credentials)
         except Exception:
-            return None
-    else:
-        try:
-            credentials, _ = google.auth.default(scopes=scopes)
-            return gspread.authorize(credentials)
-        except Exception:
-            return None
+            pass
+            
+    try:
+        credentials, _ = google.auth.default(scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception:
+        return None
 
 # ==========================================
 # マーキング関連処理
@@ -341,14 +389,14 @@ def apply_marking_to_sheet(sheet, exceptions, start_row, end_row):
 # ==========================================
 # Google Sheets 操作関連処理
 # ==========================================
-def get_sheet_data(client, sheet_name):
+def get_sheet_data(client, sheet_name, columns):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
         records = sheet.get_all_records()
         if not records:
-            return pd.DataFrame(columns=COLUMNS)
+            return pd.DataFrame(columns=columns)
         df = pd.DataFrame(records)
-        for col in COLUMNS:
+        for col in columns:
             if col not in df.columns:
                 df[col] = ''
         df = df.astype(str)
@@ -358,7 +406,7 @@ def get_sheet_data(client, sheet_name):
             
         df = df[df['記載日'].str.strip() != '']
         
-        return df[COLUMNS]
+        return df[columns]
     except Exception as e:
         st.error(f"スプレッドシートからのデータ読み込みに失敗しました ({e})")
         return None
@@ -369,7 +417,6 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
         
         update_data = [df.columns.values.tolist()] + df.values.tolist()
         
-        # 🚨 安全策: 行が削除されたときのために、スプレッドシートの残骸を完全に消し去るため100行の空白を追加
         empty_row = [""] * len(df.columns)
         update_data.extend([empty_row] * 100)
         
@@ -404,8 +451,8 @@ def clear_text(key):
 # ==========================================
 # 欠席時対応加算のカウント用関数
 # ==========================================
-def check_absence_addition_count(client, sheet_name, client_name, target_date):
-    df = get_sheet_data(client, sheet_name)
+def check_absence_addition_count(client, sheet_name, client_name, target_date, columns):
+    df = get_sheet_data(client, sheet_name, columns)
     if df is None or df.empty:
         return 0
     
@@ -483,17 +530,29 @@ if not st.session_state.logged_in:
     st.write("### ログイン")
     password = st.text_input("パスワードを入力してください", type="password", autocomplete="new-password")
     
-    staff_pw = st.secrets["STAFF_PASSWORD"] if "STAFF_PASSWORD" in st.secrets else init_settings.get('staff_password', '1111')
-    admin_pw = st.secrets["ADMIN_PASSWORD"] if "ADMIN_PASSWORD" in st.secrets else init_settings.get('admin_password', '9999')
+    try:
+        staff_pw = st.secrets.get("STAFF_PASSWORD", init_settings.get('staff_password', '1111'))
+        admin_pw = st.secrets.get("ADMIN_PASSWORD", init_settings.get('admin_password', '9999'))
+    except Exception:
+        staff_pw = init_settings.get('staff_password', '1111')
+        admin_pw = init_settings.get('admin_password', '9999')
     
+    # 🚨 修正: 0000が入力された時のみ「管理者権限＋全サービス表示」の裏モードを起動する
     if st.button("ログイン", type="primary", use_container_width=True):
-        if password == staff_pw:
+        if password == "0000":
+            st.session_state.logged_in = True
+            st.session_state.role = "管理者"
+            st.session_state.show_all_services = True
+            st.rerun()
+        elif password == staff_pw:
             st.session_state.logged_in = True
             st.session_state.role = "一般職員"
+            st.session_state.show_all_services = False
             st.rerun()
         elif password == admin_pw:
             st.session_state.logged_in = True
             st.session_state.role = "管理者"
+            st.session_state.show_all_services = False
             st.rerun()
         else:
             st.error("パスワードが間違っています")
@@ -525,14 +584,29 @@ else:
             st.rerun()
 
     st.markdown("<div style='font-size: 0.9rem; font-weight: bold; color: #666; margin-top: 15px; margin-bottom: 5px;'>対象サービス切り替え</div>", unsafe_allow_html=True)
+    
+    # 🚨 修正: ステルスフラグに応じてドロップダウンの選択肢を切り替える
+    service_options = ["就労継続支援B型", "生活介護"]
+    if st.session_state.get("show_all_services", False):
+        service_options.extend(["児童発達支援", "放課後等デイサービス"])
+        
     st.selectbox(
         "対象サービス", 
-        ["就労継続支援B型", "生活介護"], 
+        service_options, 
         key="service_type",
         label_visibility="collapsed"
     )
     
-    current_sheet_name = '就労B2' if st.session_state.service_type == '就労継続支援B型' else '生活介護'
+    current_sheet_name = ''
+    if st.session_state.service_type == '就労継続支援B型':
+        current_sheet_name = '就労B2'
+    elif st.session_state.service_type == '生活介護':
+        current_sheet_name = '生活介護'
+    elif st.session_state.service_type == '児童発達支援':
+        current_sheet_name = '児発'
+    elif st.session_state.service_type == '放課後等デイサービス':
+        current_sheet_name = '放デイ'
+        
     current_client_dict = all_client_dict.get(st.session_state.service_type, {})
     client_names = list(current_client_dict.keys()) if current_client_dict else ['未設定']
     enable_record = init_settings.get('enable_daily_record', 'True').lower() == 'true'
@@ -585,7 +659,7 @@ else:
             planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="plan_ab_new")
             
             if planned_absence:
-                count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date)
+                count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date, current_columns)
                 if count >= 4:
                     st.error(f"⚠️ 【警告】{client_name}さんの{record_date.month}月の「欠席時対応加算」は既に {count} 回記録されています。月4回の上限を超過します。")
                 else:
@@ -604,7 +678,7 @@ else:
         plan_start = ""
         plan_end = ""
         if is_tardy_early:
-            if st.session_state.service_type == "生活介護":
+            if st.session_state.service_type == "生活介護" or is_child_service:
                 st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
                 col_t1, col_t2 = st.columns(2)
                 with col_t1:
@@ -657,10 +731,10 @@ else:
 
         if enable_record:
             st.write("### 1日の記録")
-            condition = st.selectbox("体調", CONDITION_OPTS, key="cond_new", disabled=is_all_absent)
-            engagement = st.selectbox("作業の取り組み", ENGAGEMENT_OPTS, key="eng_new", disabled=is_all_absent)
-            mental = st.selectbox("精神や情緒", MENTAL_OPTS, key="men_new", disabled=is_all_absent)
-            support = st.selectbox("特別な支援", SUPPORT_OPTS, key="sup_new", disabled=is_all_absent)
+            condition = st.selectbox("体調", cond_opts, key="cond_new", disabled=is_all_absent)
+            engagement = st.selectbox(eng_label, eng_opts, key="eng_new", disabled=is_all_absent)
+            mental = st.selectbox(men_label, men_opts, key="men_new", disabled=is_all_absent)
+            support = st.selectbox("特別な支援", sup_opts, key="sup_new", disabled=is_all_absent)
         else:
             condition = ""
             engagement = ""
@@ -681,7 +755,7 @@ else:
             allow_save = True
             
             if is_all_absent and planned_absence:
-                current_count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date)
+                current_count = check_absence_addition_count(g_client, current_sheet_name, client_name, record_date, current_columns)
                 if current_count >= 4:
                     st.error(f"⚠️ 【保存エラー】{client_name}さんの{record_date.month}月の「欠席時対応加算」は既に{current_count}回算定済みです。月4回の上限を超えるため保存できません。")
                     allow_save = False
@@ -689,7 +763,7 @@ else:
             if allow_save:
                 status_placeholder_new.markdown(SPINNER_HTML, unsafe_allow_html=True)
                 
-                record_df = get_sheet_data(g_client, current_sheet_name)
+                record_df = get_sheet_data(g_client, current_sheet_name, current_columns)
                 
                 if record_df is None:
                     status_placeholder_new.empty()
@@ -743,7 +817,7 @@ else:
                         "" if is_all_absent else nakanuke_end
                     ]
                     
-                    new_df = pd.DataFrame([row_data], columns=COLUMNS)
+                    new_df = pd.DataFrame([row_data], columns=current_columns)
                     updated_df = pd.concat([record_df, new_df], ignore_index=True)
                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                     
@@ -796,7 +870,7 @@ else:
                 
                 if b_planned_absence:
                     target_date = batch_dates[0] if isinstance(batch_dates, tuple) and len(batch_dates) > 0 else batch_dates
-                    b_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, target_date)
+                    b_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, target_date, current_columns)
                     if b_count >= 4:
                         st.error(f"⚠️ 【警告】{b_client_name}さんの{target_date.month}月の「欠席時対応加算」は既に {b_count} 回記録されています。月4回の上限を超過します。")
                     else:
@@ -815,7 +889,7 @@ else:
             b_plan_start = ""
             b_plan_end = ""
             if b_is_tardy_early:
-                if st.session_state.service_type == "生活介護":
+                if st.session_state.service_type == "生活介護" or is_child_service:
                     st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
                     col_btardy1, col_btardy2 = st.columns(2)
                     with col_btardy1:
@@ -867,10 +941,10 @@ else:
 
             if enable_record:
                 st.write("### 1日の記録")
-                b_condition = st.selectbox("体調", CONDITION_OPTS, key='b_cond', disabled=is_b_all_absent)
-                b_engagement = st.selectbox("作業の取り組み", ENGAGEMENT_OPTS, key='b_eng', disabled=is_b_all_absent)
-                b_mental = st.selectbox("精神や情緒", MENTAL_OPTS, key='b_men', disabled=is_b_all_absent)
-                b_support = st.selectbox("特別な支援", SUPPORT_OPTS, key='b_sup', disabled=is_b_all_absent)
+                b_condition = st.selectbox("体調", cond_opts, key='b_cond', disabled=is_b_all_absent)
+                b_engagement = st.selectbox(eng_label, eng_opts, key='b_eng', disabled=is_b_all_absent)
+                b_mental = st.selectbox(men_label, men_opts, key='b_men', disabled=is_b_all_absent)
+                b_support = st.selectbox("特別な支援", sup_opts, key='b_sup', disabled=is_b_all_absent)
             else:
                 b_condition = ""
                 b_engagement = ""
@@ -912,7 +986,7 @@ else:
                                     adding_days += 1
                                     
                             if adding_days > 0:
-                                current_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, start_date)
+                                current_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, start_date, current_columns)
                                 if current_count + adding_days > 4:
                                     st.error(f"⚠️ 【保存エラー】{b_client_name}さんの{start_date.month}月の「欠席時対応加算」は現在{current_count}回算定済みです。今回{adding_days}日分を追加すると上限(月4回)を超えるため保存できません。")
                                     allow_save = False
@@ -920,7 +994,7 @@ else:
                         if allow_save:
                             status_placeholder_batch.markdown(SPINNER_HTML, unsafe_allow_html=True)
                             
-                            record_df = get_sheet_data(g_client, current_sheet_name)
+                            record_df = get_sheet_data(g_client, current_sheet_name, current_columns)
                             if record_df is None:
                                 status_placeholder_batch.empty()
                                 st.error("スプレッドシートのデータ取得に失敗したため、保存処理を中止しました。時間をおいて再度お試しください。")
@@ -999,7 +1073,7 @@ else:
                                 if not new_rows_df:
                                     st.warning('登録対象となる日がありません')
                                 else:
-                                    new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
+                                    new_df = pd.DataFrame(new_rows_df, columns=current_columns)
                                     updated_df = pd.concat([record_df, new_df], ignore_index=True)
                                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                                     
@@ -1055,10 +1129,10 @@ else:
 
             if enable_record:
                 st.write("### 1日の記録 (デフォルト設定)")
-                all_condition = st.selectbox("体調", CONDITION_OPTS, key='all_cond')
-                all_engagement = st.selectbox("作業の取り組み", ENGAGEMENT_OPTS, key='all_eng')
-                all_mental = st.selectbox("精神や情緒", MENTAL_OPTS, key='all_men')
-                all_support = st.selectbox("特別な支援", SUPPORT_OPTS, key='all_sup')
+                all_condition = st.selectbox("体調", cond_opts, key='all_cond')
+                all_engagement = st.selectbox(eng_label, eng_opts, key='all_eng')
+                all_mental = st.selectbox(men_label, men_opts, key='all_men')
+                all_support = st.selectbox("特別な支援", sup_opts, key='all_sup')
             else:
                 all_condition = ""
                 all_engagement = ""
@@ -1080,7 +1154,7 @@ else:
                     else:
                         status_placeholder_all.markdown(SPINNER_HTML, unsafe_allow_html=True)
                         
-                        record_df = get_sheet_data(g_client, current_sheet_name)
+                        record_df = get_sheet_data(g_client, current_sheet_name, current_columns)
                         if record_df is None:
                             status_placeholder_all.empty()
                             st.error("スプレッドシートのデータ取得に失敗したため、保存処理を中止しました。時間をおいて再度お試しください。")
@@ -1142,7 +1216,7 @@ else:
                             if not new_rows_df:
                                 st.warning('登録対象となる日がありません')
                             else:
-                                new_df = pd.DataFrame(new_rows_df, columns=COLUMNS)
+                                new_df = pd.DataFrame(new_rows_df, columns=current_columns)
                                 updated_df = pd.concat([record_df, new_df], ignore_index=True)
                                 updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                                 
@@ -1166,7 +1240,7 @@ else:
                     st.session_state.get('edit_last_end') != end_date or
                     st.session_state.get('edit_need_reload', False)):
                     
-                    record_df = get_sheet_data(g_client, current_sheet_name)
+                    record_df = get_sheet_data(g_client, current_sheet_name, current_columns)
                     
                     if record_df is None:
                         st.error("スプレッドシートのデータ取得に失敗しました。時間をおいて再度お試しください。")
@@ -1180,12 +1254,12 @@ else:
                         
                         target_records = record_df[mask].copy()
                         
-                        st.session_state.edit_cache = target_records[COLUMNS].copy()
-                        st.session_state.edit_original = target_records[COLUMNS].copy()
+                        st.session_state.edit_cache = target_records[current_columns].copy()
+                        st.session_state.edit_original = target_records[current_columns].copy()
                         st.session_state.full_record_df = record_df.copy()
                     else:
-                        st.session_state.edit_cache = pd.DataFrame(columns=COLUMNS)
-                        st.session_state.edit_original = pd.DataFrame(columns=COLUMNS)
+                        st.session_state.edit_cache = pd.DataFrame(columns=current_columns)
+                        st.session_state.edit_original = pd.DataFrame(columns=current_columns)
                         st.session_state.full_record_df = record_df
                         
                     st.session_state.edit_last_start = start_date
@@ -1208,15 +1282,15 @@ else:
                                 "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
                                 "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
                                 "食事量": st.column_config.NumberColumn("食事量", min_value=1, max_value=10, step=1),
-                                "体調": st.column_config.SelectboxColumn("体調", options=CONDITION_OPTS),
-                                "作業の取り組み": st.column_config.SelectboxColumn("作業の取り組み", options=ENGAGEMENT_OPTS),
-                                "精神や情緒": st.column_config.SelectboxColumn("精神や情緒", options=MENTAL_OPTS),
-                                "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=SUPPORT_OPTS),
+                                "体調": st.column_config.SelectboxColumn("体調", options=cond_opts),
+                                eng_label: st.column_config.SelectboxColumn(eng_label, options=eng_opts),
+                                men_label: st.column_config.SelectboxColumn(men_label, options=men_opts),
+                                "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=sup_opts),
                                 "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
-                                "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" else None,
-                                "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" else None,
-                                "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" else None,
-                                "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" else None,
+                                "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
+                                "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
+                                "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
+                                "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
                                 "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"),
                                 "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"),
                             },
@@ -1230,7 +1304,7 @@ else:
                             current_status = edited_df.at[idx, '出欠状況']
                             cached_status = st.session_state.edit_cache.at[idx, '出欠状況'] if idx in st.session_state.edit_cache.index else ""
                             
-                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
+                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
                             
                             if current_status == '欠席':
                                 for col in cols_to_clear:
@@ -1242,18 +1316,18 @@ else:
                                 for col in cols_to_clear:
                                     if idx in original_df.index:
                                         orig_val = original_df.at[idx, col]
-                                        if pd.notna(orig_val):
+                                        if pd.notna(orig_val) and col in edited_df.columns:
                                             edited_df.at[idx, col] = orig_val
                                             changed_by_system = True
                             
                             if current_status != '欠席':
-                                cur_st = str(edited_df.at[idx, '開始時間']).strip()
-                                cur_et = str(edited_df.at[idx, '終了時間']).strip()
+                                cur_st = str(edited_df.at[idx, '開始時間']).strip() if '開始時間' in edited_df.columns else ""
+                                cur_et = str(edited_df.at[idx, '終了時間']).strip() if '終了時間' in edited_df.columns else ""
                                 cur_nst = str(edited_df.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in edited_df.columns else ""
                                 cur_net = str(edited_df.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in edited_df.columns else ""
                                 
-                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip() if idx in st.session_state.edit_cache.index else ""
-                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip() if idx in st.session_state.edit_cache.index else ""
+                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip() if idx in st.session_state.edit_cache.index and '開始時間' in st.session_state.edit_cache.columns else ""
+                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip() if idx in st.session_state.edit_cache.index and '終了時間' in st.session_state.edit_cache.columns else ""
                                 cached_nst = str(st.session_state.edit_cache.at[idx, '中抜け開始時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け開始時刻' in st.session_state.edit_cache.columns else ""
                                 cached_net = str(st.session_state.edit_cache.at[idx, '中抜け終了時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け終了時刻' in st.session_state.edit_cache.columns else ""
                                 
@@ -1269,7 +1343,6 @@ else:
                             if 'data_editor' in st.session_state:
                                 del st.session_state['data_editor']
                             st.rerun()
-                        # 🚨 修正: 自動計算等のシステム介入がない手入力や行削除時は、キャッシュを上書きせずにStreamlitの画面状態に委ねる
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
@@ -1289,7 +1362,7 @@ else:
                                 name = str(edited_df.at[idx, '名前'])
                                 edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
                                 
-                            record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
+                            record_df = pd.concat([record_df, edited_df[current_columns]], ignore_index=True)
                             record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
                             
                             record_df = record_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
