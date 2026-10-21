@@ -356,7 +356,6 @@ def get_sheet_data(client, sheet_name):
         if '出欠状況' in df.columns:
             df['出欠状況'] = df['出欠状況'].replace('全日欠席', '欠席')
             
-        # 🚨 ゴミ行（記載日が空の行）を除外し、表示バグを防ぐ
         df = df[df['記載日'].str.strip() != '']
         
         return df[COLUMNS]
@@ -368,11 +367,9 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
         
-        # タイトル行 ＋ データ行
         update_data = [df.columns.values.tolist()] + df.values.tolist()
         
-        # 🚨 行削除時に下部に残る古い残骸を確実に消すため、
-        # 余裕をもって100行分の「空っぽの行」を末尾にくっつけて上書きペーストする
+        # 🚨 安全策: 行が削除されたときのために、スプレッドシートの残骸を完全に消し去るため100行の空白を追加
         empty_row = [""] * len(df.columns)
         update_data.extend([empty_row] * 100)
         
@@ -1231,7 +1228,7 @@ else:
                         
                         for idx in edited_df.index:
                             current_status = edited_df.at[idx, '出欠状況']
-                            cached_status = st.session_state.edit_cache.at[idx, '出欠状況']
+                            cached_status = st.session_state.edit_cache.at[idx, '出欠状況'] if idx in st.session_state.edit_cache.index else ""
                             
                             cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
                             
@@ -1255,10 +1252,10 @@ else:
                                 cur_nst = str(edited_df.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in edited_df.columns else ""
                                 cur_net = str(edited_df.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in edited_df.columns else ""
                                 
-                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip()
-                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip()
-                                cached_nst = str(st.session_state.edit_cache.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in st.session_state.edit_cache.columns else ""
-                                cached_net = str(st.session_state.edit_cache.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in st.session_state.edit_cache.columns else ""
+                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip() if idx in st.session_state.edit_cache.index else ""
+                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip() if idx in st.session_state.edit_cache.index else ""
+                                cached_nst = str(st.session_state.edit_cache.at[idx, '中抜け開始時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け開始時刻' in st.session_state.edit_cache.columns else ""
+                                cached_net = str(st.session_state.edit_cache.at[idx, '中抜け終了時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け終了時刻' in st.session_state.edit_cache.columns else ""
                                 
                                 if (cur_st != cached_st or cur_et != cached_et or 
                                     cur_nst != cached_nst or cur_net != cached_net):
@@ -1272,8 +1269,7 @@ else:
                             if 'data_editor' in st.session_state:
                                 del st.session_state['data_editor']
                             st.rerun()
-                        else:
-                            st.session_state.edit_cache = edited_df.copy()
+                        # 🚨 修正: 自動計算等のシステム介入がない手入力や行削除時は、キャッシュを上書きせずにStreamlitの画面状態に委ねる
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
