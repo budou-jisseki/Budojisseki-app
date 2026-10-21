@@ -21,7 +21,6 @@ JSON_KEY_FILE = 'secret.json'
 SPREADSHEET_KEY = '1JQe44mjZAUo2oAyVANerXpgXjeM5z_XvJZIjB_TrN5U'
 MASTER_SHEET_NAME = '利用者マスタ'
 
-# 🚨 修正: V列とW列に「中抜け開始時刻」「中抜け終了時刻」を追加
 COLUMNS = [
     '記載日', '名前', '受給者証番号', '出欠状況',
     '開始時間', '終了時間', '算定時間数',
@@ -237,7 +236,6 @@ def load_init_settings():
             pass
     return settings
 
-# 🚨 修正: 中抜け時間を受け取り、減算する計算ロジック
 def calc_working_hours(start_str, end_str, n_start_str="", n_end_str=""):
     if not start_str or not end_str:
         return ""
@@ -245,10 +243,8 @@ def calc_working_hours(start_str, end_str, n_start_str="", n_end_str=""):
         start_dt = datetime.strptime(start_str, "%H:%M")
         end_dt = datetime.strptime(end_str, "%H:%M")
         
-        # 滞在時間（分）
         diff_min = (end_dt - start_dt).total_seconds() / 60
         
-        # 中抜け時間（分）
         nakanuke_min = 0
         if n_start_str and n_end_str:
             try:
@@ -352,13 +348,17 @@ def get_sheet_data(client, sheet_name):
         if not records:
             return pd.DataFrame(columns=COLUMNS)
         df = pd.DataFrame(records)
-        # 不足している列（中抜けなど追加した場合）を空文字で補填
         for col in COLUMNS:
             if col not in df.columns:
                 df[col] = ''
         df = df.astype(str)
+        
         if '出欠状況' in df.columns:
             df['出欠状況'] = df['出欠状況'].replace('全日欠席', '欠席')
+            
+        # 🚨 ゴミ行（記載日が空の行）を除外し、表示バグを防ぐ
+        df = df[df['記載日'].str.strip() != '']
+        
         return df[COLUMNS]
     except Exception as e:
         st.error(f"スプレッドシートからのデータ読み込みに失敗しました ({e})")
@@ -368,18 +368,18 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
         
+        # タイトル行 ＋ データ行
         update_data = [df.columns.values.tolist()] + df.values.tolist()
+        
+        # 🚨 行削除時に下部に残る古い残骸を確実に消すため、
+        # 余裕をもって100行分の「空っぽの行」を末尾にくっつけて上書きペーストする
+        empty_row = [""] * len(df.columns)
+        update_data.extend([empty_row] * 100)
         
         try:
             sheet.update('A1', update_data)
         except TypeError:
             sheet.update(update_data)
-        
-        num_rows = len(update_data)
-        try:
-            sheet.batch_clear([f"A{num_rows + 1}:Z"])
-        except Exception:
-            pass
 
         all_exceptions = []
         end_row = len(df) + 1
@@ -624,7 +624,6 @@ else:
             else:
                 st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
 
-        # 🚨 修正: 中抜け欄に開始・終了時刻の入力枠を追加
         st.write("### 中抜け")
         is_nakanuke = st.checkbox("中抜け", key="nakanuke_new", disabled=is_all_absent)
         nakanuke_start = ""
@@ -708,7 +707,6 @@ else:
                     else:
                         attendance_status = "出席"
         
-                    # 🚨 修正: 計算関数に中抜け時間を渡して減算させる
                     calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end, nakanuke_start, nakanuke_end)
                     recipient_num = current_client_dict.get(client_name, "")
                     
@@ -744,8 +742,8 @@ else:
                         "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
                         "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
                         "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else ""),
-                        "" if is_all_absent else nakanuke_start, # V列: 中抜け開始
-                        "" if is_all_absent else nakanuke_end    # W列: 中抜け終了
+                        "" if is_all_absent else nakanuke_start,
+                        "" if is_all_absent else nakanuke_end
                     ]
                     
                     new_df = pd.DataFrame([row_data], columns=COLUMNS)
@@ -837,7 +835,6 @@ else:
                 else:
                     st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
             
-            # 🚨 修正: 一括入力画面の中抜け欄にも開始・終了時刻の枠を追加
             st.write("### 中抜け")
             b_is_nakanuke = st.checkbox("中抜け", key="b_nakanuke", disabled=is_b_all_absent)
             b_nakanuke_start = ""
@@ -1141,8 +1138,8 @@ else:
                                         "",
                                         "",
                                         "",
-                                        "", # V列 (中抜けなし)
-                                        ""  # W列
+                                        "",
+                                        ""
                                     ])
                             
                             if not new_rows_df:
@@ -1223,8 +1220,8 @@ else:
                                 "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" else None,
                                 "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" else None,
                                 "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" else None,
-                                "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"), # 🚨 エディタに表示追加
-                                "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"), # 🚨 エディタに表示追加
+                                "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"),
+                                "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"),
                             },
                             num_rows="dynamic", use_container_width=True, key="data_editor"
                         )
@@ -1252,7 +1249,6 @@ else:
                                             edited_df.at[idx, col] = orig_val
                                             changed_by_system = True
                             
-                            # 🚨 修正: 開始/終了時刻 または 中抜け時刻の変更を検知して自動再計算
                             if current_status != '欠席':
                                 cur_st = str(edited_df.at[idx, '開始時間']).strip()
                                 cur_et = str(edited_df.at[idx, '終了時間']).strip()
