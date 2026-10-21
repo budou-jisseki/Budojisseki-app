@@ -235,16 +235,16 @@ def load_init_settings():
             pass
     return settings
 
-def calc_working_hours(start_str, end_str, rest_min_str):
+# 🚨 修正: 休憩時間の減算をなくし、シンプルに終了時間から開始時間を引く仕様に変更
+def calc_working_hours(start_str, end_str):
     if not start_str or not end_str:
         return ""
     try:
         start_dt = datetime.strptime(start_str, "%H:%M")
         end_dt = datetime.strptime(end_str, "%H:%M")
-        rest_min = int(rest_min_str)
         
         diff_min = (end_dt - start_dt).total_seconds() / 60
-        actual_min = max(0, diff_min - rest_min)
+        actual_min = max(0, diff_min)
         
         h = int(actual_min // 60)
         m = int(actual_min % 60)
@@ -690,8 +690,8 @@ else:
                     else:
                         attendance_status = "出席"
         
-                    r_min = init_settings['rest_time_min']
-                    calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end, r_min)
+                    # 🚨 修正: 休憩時間の減算をなくし、そのまま開始時間と終了時間を渡す
+                    calc_time = "" if is_all_absent else calc_working_hours(input_start, input_end)
                     recipient_num = current_client_dict.get(client_name, "")
                     
                     final_remarks = remarks
@@ -917,8 +917,8 @@ else:
         
                                 new_rows_df = []
                                 b_recipient_num = current_client_dict.get(b_client_name, "")
-                                r_min = init_settings['rest_time_min']
-                                b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end, r_min)
+                                # 🚨 修正: 休憩時間の減算をなくす
+                                b_calc_time = "" if is_b_all_absent else calc_working_hours(b_start, b_end)
                                 
                                 b_final_remarks = b_remarks
                                 if is_b_all_absent:
@@ -946,7 +946,7 @@ else:
                                     if is_saturday:
                                         current_start = init_settings.get('SAT_start_time', '10:00')
                                         current_end = init_settings.get('SAT_end_time', '12:00')
-                                        current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end, r_min)
+                                        current_calc_time = "" if is_b_all_absent else calc_working_hours(current_start, current_end)
                                     else:
                                         current_start = b_start
                                         current_end = b_end
@@ -1066,8 +1066,8 @@ else:
                             st.error("スプレッドシートのデータ取得に失敗したため、保存処理を中止しました。時間をおいて再度お試しください。")
                         else:
                             new_rows_df = []
-                            r_min = init_settings['rest_time_min']
-                            all_calc_time = calc_working_hours(all_start, all_end, r_min)
+                            # 🚨 修正: 休憩時間の減算をなくす
+                            all_calc_time = calc_working_hours(all_start, all_end)
                             
                             for i in range((end_date - start_date).days + 1):
                                 current_date = start_date + timedelta(days=i)
@@ -1085,7 +1085,7 @@ else:
                                 if is_saturday:
                                     current_start = init_settings.get('SAT_start_time', '10:00')
                                     current_end = init_settings.get('SAT_end_time', '12:00')
-                                    current_calc_time = calc_working_hours(current_start, current_end, r_min)
+                                    current_calc_time = calc_working_hours(current_start, current_end)
                                 else:
                                     current_start = all_start
                                     current_end = all_end
