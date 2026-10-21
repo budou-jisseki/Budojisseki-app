@@ -1151,6 +1151,7 @@ else:
                     if record_df is None:
                         st.error("スプレッドシートのデータ取得に失敗しました。時間をおいて再度お試しください。")
                         st.session_state.edit_cache = None
+                        st.session_state.edit_original = None
                     elif not record_df.empty:
                         start_ts = pd.to_datetime(start_date)
                         end_ts = pd.to_datetime(end_date)
@@ -1159,11 +1160,13 @@ else:
                         
                         target_records = record_df[mask].copy()
                         
-                        # 編集用のキャッシュと、保存時に比較するための元データを保存
+                        # 編集用のキャッシュと、復元用の元データをそれぞれ保存
                         st.session_state.edit_cache = target_records[COLUMNS].copy()
+                        st.session_state.edit_original = target_records[COLUMNS].copy()
                         st.session_state.full_record_df = record_df.copy()
                     else:
                         st.session_state.edit_cache = pd.DataFrame(columns=COLUMNS)
+                        st.session_state.edit_original = pd.DataFrame(columns=COLUMNS)
                         st.session_state.full_record_df = record_df
                         
                     st.session_state.edit_last_start = start_date
@@ -1178,7 +1181,6 @@ else:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
-                        # form（保存ボタンまでの待機）を外し、リアルタイム連動させる
                         edited_df = st.data_editor(
                             st.session_state.edit_cache,
                             column_config={
@@ -1201,25 +1203,37 @@ else:
                             num_rows="dynamic", use_container_width=True, key="data_editor"
                         )
                         
-                        # ユーザーが「欠席」を選んだ瞬間を検知し、不要項目を空欄に書き換えるロジック
                         changed_by_system = False
+                        original_df = st.session_state.edit_original
+                        
                         for idx in edited_df.index:
-                            if edited_df.at[idx, '出欠状況'] == '欠席':
-                                # ※「特記事項」は欠席理由が入っている可能性があるため残します
-                                cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']
+                            current_status = edited_df.at[idx, '出欠状況']
+                            cached_status = st.session_state.edit_cache.at[idx, '出欠状況']
+                            
+                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']
+                            
+                            # 1. ユーザーが「欠席」に変更した場合 → 時間などをクリア
+                            if current_status == '欠席':
                                 for col in cols_to_clear:
                                     if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
                                         edited_df.at[idx, col] = ''
                                         changed_by_system = True
+                            
+                            # 2. 間違えて「欠席」にした後、「出席」などに戻した場合 → オリジナルデータから復元
+                            elif cached_status == '欠席' and current_status != '欠席':
+                                for col in cols_to_clear:
+                                    if idx in original_df.index:
+                                        orig_val = original_df.at[idx, col]
+                                        if pd.notna(orig_val):
+                                            edited_df.at[idx, col] = orig_val
+                                            changed_by_system = True
                         
-                        # システム側で強制的に空欄にした場合は、キャッシュを上書きして画面を瞬間リロード
                         if changed_by_system:
                             st.session_state.edit_cache = edited_df.copy()
                             if 'data_editor' in st.session_state:
                                 del st.session_state['data_editor']
                             st.rerun()
                         else:
-                            # ユーザーが通常の編集（時間の手入力など）をした場合はそのままキャッシュを更新
                             st.session_state.edit_cache = edited_df.copy()
                         
                         status_placeholder_edit = st.empty()
@@ -1230,14 +1244,12 @@ else:
                             
                             record_df = st.session_state.full_record_df.copy()
                             
-                            # 1. 保存先の全データから、今回編集している期間のデータを一旦すべて取り除く
                             start_ts = pd.to_datetime(start_date)
                             end_ts = pd.to_datetime(end_date)
                             record_df['比較用日付'] = pd.to_datetime(record_df['記載日'], errors='coerce')
                             mask = (record_df['比較用日付'] >= start_ts) & (record_df['比較用日付'] <= end_ts)
                             record_df = record_df[~mask].copy()
                             
-                            # 2. 編集が終わった新しいデータを追加する
                             for idx in edited_df.index:
                                 name = str(edited_df.at[idx, '名前'])
                                 edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
@@ -1245,7 +1257,6 @@ else:
                             record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
                             record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
                             
-                            # 重複排除と日付ソートを行って整える
                             record_df = record_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                             record_df = record_df.sort_values(by=['記載日', '名前']).reset_index(drop=True)
                             
