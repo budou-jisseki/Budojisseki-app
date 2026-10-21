@@ -340,9 +340,11 @@ def get_sheet_data(client, sheet_name):
             if col not in df.columns:
                 df[col] = ''
         df = df.astype(str)
+        # 過去の「全日欠席」データを「欠席」に自動置換
+        if '出欠状況' in df.columns:
+            df['出欠状況'] = df['出欠状況'].replace('全日欠席', '欠席')
         return df[COLUMNS]
     except Exception as e:
-        # 🚨 修正: 取得失敗時に空のデータを返さず、None を返すことで誤った上書きを防ぐ
         st.error(f"スプレッドシートからのデータ読み込みに失敗しました ({e})")
         return None
 
@@ -350,24 +352,21 @@ def update_entire_sheet(client, sheet_name, df, init_settings):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
         
-        # 🚨 修正: sheet.clear() を削除し、通信エラーで白紙になるリスクを完全に排除
-        
         # 更新するデータを準備（タイトル行 ＋ データ行）
         update_data = [df.columns.values.tolist()] + df.values.tolist()
         
-        # A1セルから一気に上書きする（既存データに上被せする形なので消去エラーリスクがない）
+        # A1セルから一気に上書きする
         try:
             sheet.update('A1', update_data)
         except TypeError:
-            # 万が一 gspread のバージョンが古く 'A1' 指定でエラーになる場合の予備処理
             sheet.update(update_data)
         
-        # 🚨 修正: データが減った場合（過去の記録の削除時など）に、下部に残る古い残骸のみをクリアする
+        # データが減った場合（過去の記録の削除時など）に、下部に残る古い残骸のみをクリアする
         num_rows = len(update_data)
         try:
             sheet.batch_clear([f"A{num_rows + 1}:Z"])
         except Exception:
-            pass # ここでエラーが起きてもメインの更新は完了しているので無視する
+            pass
 
         all_exceptions = []
         end_row = len(df) + 1
@@ -397,7 +396,6 @@ def clear_text(key):
 # ==========================================
 def check_absence_addition_count(client, sheet_name, client_name, target_date):
     df = get_sheet_data(client, sheet_name)
-    # 🚨 修正: データが None の場合のエラー回避
     if df is None or df.empty:
         return 0
     
@@ -565,7 +563,8 @@ else:
         client_name = st.selectbox("名前（利用者）", client_names, key="name_new", label_visibility="collapsed")
         
         st.write("### 出欠状況")
-        full_absent = st.checkbox("全日欠席", key="full_ab_new", on_change=on_full_attendance_change)
+        # 「全日欠席」表記を「欠席」に統一
+        full_absent = st.checkbox("欠席", key="full_ab_new", on_change=on_full_attendance_change)
         is_all_absent = full_absent
         
         absent_reason = ""
@@ -676,7 +675,6 @@ else:
             if allow_save:
                 status_placeholder_new.markdown(SPINNER_HTML, unsafe_allow_html=True)
                 
-                # 🚨 修正: 取得失敗時に処理を中止するフェイルセーフを追加
                 record_df = get_sheet_data(g_client, current_sheet_name)
                 
                 if record_df is None:
@@ -684,7 +682,7 @@ else:
                     st.error("スプレッドシートのデータ取得に失敗したため、保存を中止しました。時間をおいて再度お試しください。")
                 else:
                     if is_all_absent:
-                        attendance_status = "全日欠席"
+                        attendance_status = "欠席"
                     elif is_nakanuke:
                         attendance_status = "中抜け"
                     elif is_tardy_early:
@@ -771,7 +769,7 @@ else:
             b_client_name = st.selectbox('名前（利用者）', client_names, key='name_batch', label_visibility="collapsed")
             
             st.write("### 出欠状況")
-            b_full_absent = st.checkbox("全日欠席", key="b_full_ab", on_change=on_b_full_attendance_change)
+            b_full_absent = st.checkbox("欠席", key="b_full_ab", on_change=on_b_full_attendance_change)
             is_b_all_absent = b_full_absent
             
             b_absent_reason = ""
@@ -903,14 +901,13 @@ else:
                         if allow_save:
                             status_placeholder_batch.markdown(SPINNER_HTML, unsafe_allow_html=True)
                             
-                            # 🚨 修正: 取得失敗時に処理を中止するフェイルセーフを追加
                             record_df = get_sheet_data(g_client, current_sheet_name)
                             if record_df is None:
                                 status_placeholder_batch.empty()
                                 st.error("スプレッドシートのデータ取得に失敗したため、保存処理を中止しました。時間をおいて再度お試しください。")
                             else:
                                 if is_b_all_absent:
-                                    b_attendance = "全日欠席"
+                                    b_attendance = "欠席"
                                 elif b_is_nakanuke:
                                     b_attendance = "中抜け"
                                 elif b_is_tardy_early:
@@ -1063,7 +1060,6 @@ else:
                     else:
                         status_placeholder_all.markdown(SPINNER_HTML, unsafe_allow_html=True)
                         
-                        # 🚨 修正: 取得失敗時に処理を中止するフェイルセーフを追加
                         record_df = get_sheet_data(g_client, current_sheet_name)
                         if record_df is None:
                             status_placeholder_all.empty()
@@ -1143,78 +1139,120 @@ else:
             
             if len(edit_dates) == 2:
                 start_date, end_date = edit_dates
-                record_df = get_sheet_data(g_client, current_sheet_name)
                 
-                # 🚨 修正: 取得失敗時にエラーを表示して操作をストップ
-                if record_df is None:
-                    st.error("スプレッドシートのデータ取得に失敗しました。時間をおいて再度お試しください。")
-                elif not record_df.empty:
-                    start_ts = pd.to_datetime(start_date)
-                    end_ts = pd.to_datetime(end_date)
-                    record_df['比較用日付'] = pd.to_datetime(record_df['記載日'], errors='coerce')
-                    mask = (record_df['比較用日付'] >= start_ts) & (record_df['比較用日付'] <= end_ts)
+                # 新しい日付が選択されたか、保存後にリロードが必要な場合のみデータを再取得する
+                if ('edit_last_start' not in st.session_state or 
+                    st.session_state.edit_last_start != start_date or 
+                    st.session_state.get('edit_last_end') != end_date or
+                    st.session_state.get('edit_need_reload', False)):
                     
-                    target_records = record_df[mask].copy()
+                    record_df = get_sheet_data(g_client, current_sheet_name)
                     
-                    if target_records.empty:
+                    if record_df is None:
+                        st.error("スプレッドシートのデータ取得に失敗しました。時間をおいて再度お試しください。")
+                        st.session_state.edit_cache = None
+                    elif not record_df.empty:
+                        start_ts = pd.to_datetime(start_date)
+                        end_ts = pd.to_datetime(end_date)
+                        record_df['比較用日付'] = pd.to_datetime(record_df['記載日'], errors='coerce')
+                        mask = (record_df['比較用日付'] >= start_ts) & (record_df['比較用日付'] <= end_ts)
+                        
+                        target_records = record_df[mask].copy()
+                        
+                        # 編集用のキャッシュと、保存時に比較するための元データを保存
+                        st.session_state.edit_cache = target_records[COLUMNS].copy()
+                        st.session_state.full_record_df = record_df.copy()
+                    else:
+                        st.session_state.edit_cache = pd.DataFrame(columns=COLUMNS)
+                        st.session_state.full_record_df = record_df
+                        
+                    st.session_state.edit_last_start = start_date
+                    st.session_state.edit_last_end = end_date
+                    st.session_state.edit_need_reload = False
+                    
+                    # 再取得した際は、画面上のエディタを確実にリセットする
+                    if 'data_editor' in st.session_state:
+                        del st.session_state['data_editor']
+
+                if st.session_state.get('edit_cache') is not None:
+                    if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
-                        with st.form(key='edit_form'):
-                            edited_df = st.data_editor(
-                                target_records[COLUMNS],
-                                column_config={
-                                    "名前": st.column_config.SelectboxColumn("名前", options=client_names),
-                                    "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "全日欠席"]),
-                                    "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×"]),
-                                    "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
-                                    "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
-                                    "食事量": st.column_config.NumberColumn("食事量", min_value=1, max_value=10, step=1),
-                                    "体調": st.column_config.SelectboxColumn("体調", options=CONDITION_OPTS),
-                                    "作業の取り組み": st.column_config.SelectboxColumn("作業の取り組み", options=ENGAGEMENT_OPTS),
-                                    "精神や情緒": st.column_config.SelectboxColumn("精神や情緒", options=MENTAL_OPTS),
-                                    "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=SUPPORT_OPTS),
-                                    "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
-                                    "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" else None,
-                                    "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" else None,
-                                    "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" else None,
-                                    "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" else None,
-                                },
-                                num_rows="dynamic", use_container_width=True, key="data_editor"
-                            )
-                            
-                            status_placeholder_edit = st.empty()
-                            save_btn = st.form_submit_button('変更を保存する', type='primary')
-                            
+                        # form（保存ボタンまでの待機）を外し、リアルタイム連動させる
+                        edited_df = st.data_editor(
+                            st.session_state.edit_cache,
+                            column_config={
+                                "名前": st.column_config.SelectboxColumn("名前", options=client_names),
+                                "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
+                                "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×"]),
+                                "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
+                                "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
+                                "食事量": st.column_config.NumberColumn("食事量", min_value=1, max_value=10, step=1),
+                                "体調": st.column_config.SelectboxColumn("体調", options=CONDITION_OPTS),
+                                "作業の取り組み": st.column_config.SelectboxColumn("作業の取り組み", options=ENGAGEMENT_OPTS),
+                                "精神や情緒": st.column_config.SelectboxColumn("精神や情緒", options=MENTAL_OPTS),
+                                "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=SUPPORT_OPTS),
+                                "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
+                                "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" else None,
+                                "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" else None,
+                                "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" else None,
+                                "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" else None,
+                            },
+                            num_rows="dynamic", use_container_width=True, key="data_editor"
+                        )
+                        
+                        # ユーザーが「欠席」を選んだ瞬間を検知し、不要項目を空欄に書き換えるロジック
+                        changed_by_system = False
+                        for idx in edited_df.index:
+                            if edited_df.at[idx, '出欠状況'] == '欠席':
+                                # ※「特記事項」は欠席理由が入っている可能性があるため残します
+                                cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']
+                                for col in cols_to_clear:
+                                    if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
+                                        edited_df.at[idx, col] = ''
+                                        changed_by_system = True
+                        
+                        # システム側で強制的に空欄にした場合は、キャッシュを上書きして画面を瞬間リロード
+                        if changed_by_system:
+                            st.session_state.edit_cache = edited_df.copy()
+                            if 'data_editor' in st.session_state:
+                                del st.session_state['data_editor']
+                            st.rerun()
+                        else:
+                            # ユーザーが通常の編集（時間の手入力など）をした場合はそのままキャッシュを更新
+                            st.session_state.edit_cache = edited_df.copy()
+                        
+                        status_placeholder_edit = st.empty()
+                        save_btn = st.button('変更を保存する', type='primary')
+                        
                         if save_btn:
                             status_placeholder_edit.markdown(SPINNER_HTML, unsafe_allow_html=True)
                             
-                            deleted_indices = set(target_records.index) - set(edited_df.index)
-                            if deleted_indices:
-                                record_df.drop(index=list(deleted_indices), inplace=True)
+                            record_df = st.session_state.full_record_df.copy()
                             
-                            if len(edited_df) > 0:
-                                for idx in edited_df.index:
-                                    status = str(edited_df.at[idx, '出欠状況'])
-                                    name = str(edited_df.at[idx, '名前'])
-                                    
-                                    edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
-                                    
-                                    if status == "全日欠席":
-                                        for col in ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '作業の取り組み', '精神や情緒', '特別な支援', '特記事項', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻']:
-                                            edited_df.at[idx, col] = ''
-                                            
-                                record_df = record_df.drop(index=edited_df.index)
-                                record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
+                            # 1. 保存先の全データから、今回編集している期間のデータを一旦すべて取り除く
+                            start_ts = pd.to_datetime(start_date)
+                            end_ts = pd.to_datetime(end_date)
+                            record_df['比較用日付'] = pd.to_datetime(record_df['記載日'], errors='coerce')
+                            mask = (record_df['比較用日付'] >= start_ts) & (record_df['比較用日付'] <= end_ts)
+                            record_df = record_df[~mask].copy()
                             
+                            # 2. 編集が終わった新しいデータを追加する
+                            for idx in edited_df.index:
+                                name = str(edited_df.at[idx, '名前'])
+                                edited_df.at[idx, '受給者証番号'] = current_client_dict.get(name, "")
+                                
+                            record_df = pd.concat([record_df, edited_df[COLUMNS]], ignore_index=True)
                             record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
                             
+                            # 重複排除と日付ソートを行って整える
                             record_df = record_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
+                            record_df = record_df.sort_values(by=['記載日', '名前']).reset_index(drop=True)
                             
                             if update_entire_sheet(g_client, current_sheet_name, record_df, init_settings):
                                 st.session_state.success_msg = '記録をスプレッドシートに更新しました'
+                                st.session_state.edit_need_reload = True
                                 st.rerun()
-                    record_df.drop(columns=['比較用日付'], inplace=True, errors='ignore')
-                else:
-                    st.warning('スプレッドシートに記録がまだありません')
+
             elif len(edit_dates) == 1:
                 st.warning('終了日もカレンダーから選択してください')
