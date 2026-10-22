@@ -34,7 +34,7 @@ COLUMNS_CHILD = [
     '記載日', '名前', '受給者証番号', '出欠状況',
     '開始時間', '終了時間', '算定時間数',
     '送迎往路', '送迎復路', '食事提供', '食事量', 'おやつ提供', 'おやつ量',
-    '体調', '活動の様子', '機嫌・情緒', '特別な支援', '特記事項',
+    '検温', '体調', '排泄', '活動の様子', '機嫌・情緒', '特別な支援', '特記事項',
     '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
     '中抜け開始時刻', '中抜け終了時刻'
 ]
@@ -119,6 +119,9 @@ if is_child_service:
     men_label = "機嫌・情緒"
     men_opts = MOOD_OPTS
     sup_opts = SUPPORT_OPTS_CHILD
+    to_opts = ["学校", "自宅", "なし"]
+    tr_opts = ["自宅", "なし"]
+    exc_opts = ["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"]
 else:
     cond_opts = CONDITION_OPTS
     eng_label = "作業の取り組み"
@@ -126,6 +129,9 @@ else:
     men_label = "精神や情緒"
     men_opts = MENTAL_OPTS
     sup_opts = SUPPORT_OPTS
+    to_opts = ["〇", "×"]
+    tr_opts = ["〇", "×"]
+    exc_opts = []
 
 # ==========================================
 # デザイン・UIカスタマイズ
@@ -720,9 +726,9 @@ else:
 
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            transport_out = st.radio("送迎往路", ["〇", "×"], horizontal=True, key="to_new", disabled=is_all_absent)
+            transport_out = st.radio("送迎往路", to_opts, horizontal=True, key="to_new", disabled=is_all_absent)
         with col_t2:
-            transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key="tr_new", disabled=is_all_absent)
+            transport_ret = st.radio("送迎復路", tr_opts, horizontal=True, key="tr_new", disabled=is_all_absent)
 
         meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key="meal_new", disabled=is_all_absent)
         meal_amount_val = ""
@@ -735,12 +741,29 @@ else:
             if not is_all_absent and snack_provided == "〇":
                 snack_amount = st.selectbox("おやつ量", ["完食", "半分", "一口", "食べず"], key="snack_amt_new")
 
+        temp_val = 36.5
+        excretion_val = ""
+        
         if enable_record:
             st.write("### 1日の記録")
-            condition = st.selectbox("体調", cond_opts, key="cond_new", disabled=is_all_absent)
-            engagement = st.selectbox(eng_label, eng_opts, key="eng_new", disabled=is_all_absent)
-            mental = st.selectbox(men_label, men_opts, key="men_new", disabled=is_all_absent)
-            support = st.selectbox("特別な支援", sup_opts, key="sup_new", disabled=is_all_absent)
+            if is_child_service:
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    temp_val = st.number_input("検温 (℃)", min_value=34.0, max_value=43.0, value=36.5, step=0.1, format="%.1f", key="temp_new", disabled=is_all_absent)
+                with col_r2:
+                    condition = st.selectbox("体調", cond_opts, key="cond_new", disabled=is_all_absent)
+                col_r3, col_r4 = st.columns(2)
+                with col_r3:
+                    excretion_val = st.selectbox("排泄", exc_opts, key="exc_new", disabled=is_all_absent)
+                with col_r4:
+                    engagement = st.selectbox(eng_label, eng_opts, key="eng_new", disabled=is_all_absent)
+                mental = st.selectbox(men_label, men_opts, key="men_new", disabled=is_all_absent)
+                support = st.selectbox("特別な支援", sup_opts, key="sup_new", disabled=is_all_absent)
+            else:
+                condition = st.selectbox("体調", cond_opts, key="cond_new", disabled=is_all_absent)
+                engagement = st.selectbox(eng_label, eng_opts, key="eng_new", disabled=is_all_absent)
+                mental = st.selectbox(men_label, men_opts, key="men_new", disabled=is_all_absent)
+                support = st.selectbox("特別な支援", sup_opts, key="sup_new", disabled=is_all_absent)
         else:
             condition = ""
             engagement = ""
@@ -825,6 +848,8 @@ else:
                     if is_child_service:
                         row_dict['おやつ提供'] = "" if is_all_absent else snack_provided
                         row_dict['おやつ量'] = "" if (is_all_absent or snack_provided == "×") else snack_amount
+                        row_dict['検温'] = "" if is_all_absent else f"{temp_val:.1f}"
+                        row_dict['排泄'] = "" if is_all_absent else excretion_val
                     
                     new_df = pd.DataFrame([row_dict], columns=current_columns)
                     updated_df = pd.concat([record_df, new_df], ignore_index=True)
@@ -832,7 +857,7 @@ else:
                     
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                         st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
+                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'temp_new', 'exc_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
                         for k in reset_keys:
                             if k in st.session_state:
                                 del st.session_state[k]
@@ -939,9 +964,9 @@ else:
 
             col_bt1, col_bt2 = st.columns(2)
             with col_bt1:
-                b_transport_out = st.radio("送迎往路", ["〇", "×"], horizontal=True, key='b_to', disabled=is_b_all_absent)
+                b_transport_out = st.radio("送迎往路", to_opts, horizontal=True, key='b_to', disabled=is_b_all_absent)
             with col_bt2:
-                b_transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key='b_tr', disabled=is_b_all_absent)
+                b_transport_ret = st.radio("送迎復路", tr_opts, horizontal=True, key='b_tr', disabled=is_b_all_absent)
 
             b_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='b_meal', disabled=is_b_all_absent)
             b_meal_amount_val = ""
@@ -954,12 +979,29 @@ else:
                 if not is_b_all_absent and b_snack_provided == "〇":
                     b_snack_amount = st.selectbox("おやつ量", ["完食", "半分", "一口", "食べず"], key="b_snack_amt")
 
+            b_temp_val = 36.5
+            b_excretion_val = ""
+
             if enable_record:
                 st.write("### 1日の記録")
-                b_condition = st.selectbox("体調", cond_opts, key='b_cond', disabled=is_b_all_absent)
-                b_engagement = st.selectbox(eng_label, eng_opts, key='b_eng', disabled=is_b_all_absent)
-                b_mental = st.selectbox(men_label, men_opts, key='b_men', disabled=is_b_all_absent)
-                b_support = st.selectbox("特別な支援", sup_opts, key='b_sup', disabled=is_b_all_absent)
+                if is_child_service:
+                    col_br1, col_br2 = st.columns(2)
+                    with col_br1:
+                        b_temp_val = st.number_input("検温 (℃)", min_value=34.0, max_value=43.0, value=36.5, step=0.1, format="%.1f", key="b_temp", disabled=is_b_all_absent)
+                    with col_br2:
+                        b_condition = st.selectbox("体調", cond_opts, key='b_cond', disabled=is_b_all_absent)
+                    col_br3, col_br4 = st.columns(2)
+                    with col_br3:
+                        b_excretion_val = st.selectbox("排泄", exc_opts, key="b_exc", disabled=is_b_all_absent)
+                    with col_br4:
+                        b_engagement = st.selectbox(eng_label, eng_opts, key='b_eng', disabled=is_b_all_absent)
+                    b_mental = st.selectbox(men_label, men_opts, key='b_men', disabled=is_b_all_absent)
+                    b_support = st.selectbox("特別な支援", sup_opts, key='b_sup', disabled=is_b_all_absent)
+                else:
+                    b_condition = st.selectbox("体調", cond_opts, key='b_cond', disabled=is_b_all_absent)
+                    b_engagement = st.selectbox(eng_label, eng_opts, key='b_eng', disabled=is_b_all_absent)
+                    b_mental = st.selectbox(men_label, men_opts, key='b_men', disabled=is_b_all_absent)
+                    b_support = st.selectbox("特別な支援", sup_opts, key='b_sup', disabled=is_b_all_absent)
             else:
                 b_condition = ""
                 b_engagement = ""
@@ -1087,6 +1129,8 @@ else:
                                     if is_child_service:
                                         current_row_dict['おやつ提供'] = "" if is_b_all_absent else b_snack_provided
                                         current_row_dict['おやつ量'] = "" if (is_b_all_absent or b_snack_provided == "×") else b_snack_amount
+                                        current_row_dict['検温'] = "" if is_b_all_absent else f"{b_temp_val:.1f}"
+                                        current_row_dict['排泄'] = "" if is_b_all_absent else b_excretion_val
 
                                     new_rows_df.append(current_row_dict)
                                 
@@ -1099,7 +1143,7 @@ else:
                                     
                                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                         st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
+                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_temp', 'b_exc', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
                                         for k in reset_keys:
                                             if k in st.session_state:
                                                 del st.session_state[k]
@@ -1138,9 +1182,9 @@ else:
 
             col_allt1, col_allt2 = st.columns(2)
             with col_allt1:
-                all_transport_out = st.radio("送迎往路", ["〇", "×"], horizontal=True, key='all_to')
+                all_transport_out = st.radio("送迎往路", to_opts, horizontal=True, key='all_to')
             with col_allt2:
-                all_transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key='all_tr')
+                all_transport_ret = st.radio("送迎復路", tr_opts, horizontal=True, key='all_tr')
 
             all_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='all_meal')
             all_meal_amount_val = ""
@@ -1153,12 +1197,29 @@ else:
                 if all_snack_provided == "〇":
                     all_snack_amount = st.selectbox("おやつ量 (デフォルト)", ["完食", "半分", "一口", "食べず"], key="all_snack_amt")
 
+            all_temp_val = 36.5
+            all_excretion_val = ""
+
             if enable_record:
                 st.write("### 1日の記録 (デフォルト設定)")
-                all_condition = st.selectbox("体調", cond_opts, key='all_cond')
-                all_engagement = st.selectbox(eng_label, eng_opts, key='all_eng')
-                all_mental = st.selectbox(men_label, men_opts, key='all_men')
-                all_support = st.selectbox("特別な支援", sup_opts, key='all_sup')
+                if is_child_service:
+                    col_allr1, col_allr2 = st.columns(2)
+                    with col_allr1:
+                        all_temp_val = st.number_input("検温 (℃)デフォルト", min_value=34.0, max_value=43.0, value=36.5, step=0.1, format="%.1f", key="all_temp")
+                    with col_allr2:
+                        all_condition = st.selectbox("体調", cond_opts, key='all_cond')
+                    col_allr3, col_allr4 = st.columns(2)
+                    with col_allr3:
+                        all_excretion_val = st.selectbox("排泄 (デフォルト)", exc_opts, key="all_exc")
+                    with col_allr4:
+                        all_engagement = st.selectbox(eng_label, eng_opts, key='all_eng')
+                    all_mental = st.selectbox(men_label, men_opts, key='all_men')
+                    all_support = st.selectbox("特別な支援", sup_opts, key='all_sup')
+                else:
+                    all_condition = st.selectbox("体調", cond_opts, key='all_cond')
+                    all_engagement = st.selectbox(eng_label, eng_opts, key='all_eng')
+                    all_mental = st.selectbox(men_label, men_opts, key='all_men')
+                    all_support = st.selectbox("特別な支援", sup_opts, key='all_sup')
             else:
                 all_condition = ""
                 all_engagement = ""
@@ -1241,6 +1302,8 @@ else:
                                     if is_child_service:
                                         current_row_dict['おやつ提供'] = all_snack_provided
                                         current_row_dict['おやつ量'] = all_snack_amount if all_snack_provided == "〇" else ""
+                                        current_row_dict['検温'] = f"{all_temp_val:.1f}"
+                                        current_row_dict['排泄'] = all_excretion_val
 
                                     new_rows_df.append(current_row_dict)
                             
@@ -1253,7 +1316,7 @@ else:
                                 
                                 if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                     st.session_state.success_msg = f'合計 {len(new_rows_df)}件の実績を一括登録しました、「過去の記録を編集」タブから個別修正を行ってください'
-                                    reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_snack', 'all_snack_amt', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
+                                    reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_snack', 'all_snack_amt', 'all_temp', 'all_exc', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
                                     for k in reset_keys:
                                         if k in st.session_state:
                                             del st.session_state[k]
@@ -1307,8 +1370,8 @@ else:
                         col_config = {
                             "名前": st.column_config.SelectboxColumn("名前", options=client_names),
                             "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
-                            "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×"]),
-                            "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
+                            "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×", "学校", "自宅", "なし"]),
+                            "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×", "自宅", "なし"]),
                             "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
                             "食事量": st.column_config.NumberColumn("食事量", min_value=0, max_value=10, step=1),
                             "体調": st.column_config.SelectboxColumn("体調", options=cond_opts),
@@ -1326,6 +1389,8 @@ else:
                         if is_child_service:
                             col_config["おやつ提供"] = st.column_config.SelectboxColumn("おやつ提供", options=["〇", "×"])
                             col_config["おやつ量"] = st.column_config.SelectboxColumn("おやつ量", options=["完食", "半分", "一口", "食べず"])
+                            col_config["検温"] = st.column_config.NumberColumn("検温", min_value=34.0, max_value=43.0, step=0.1, format="%.1f")
+                            col_config["排泄"] = st.column_config.SelectboxColumn("排泄", options=["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"])
 
                         edited_df = st.data_editor(
                             st.session_state.edit_cache,
@@ -1342,7 +1407,7 @@ else:
                             
                             cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
                             if is_child_service:
-                                cols_to_clear.extend(['おやつ提供', 'おやつ量'])
+                                cols_to_clear.extend(['おやつ提供', 'おやつ量', '検温', '排泄'])
 
                             if current_status == '欠席':
                                 for col in cols_to_clear:
