@@ -33,7 +33,7 @@ COLUMNS_ADULT = [
 COLUMNS_CHILD = [
     '記載日', '名前', '受給者証番号', '出欠状況',
     '開始時間', '終了時間', '算定時間数',
-    '送迎往路', '送迎復路', '食事提供', '食事量',
+    '送迎往路', '送迎復路', '食事提供', '食事量', 'おやつ提供', 'おやつ量',
     '体調', '活動の様子', '機嫌・情緒', '特別な支援', '特記事項',
     '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
     '中抜け開始時刻', '中抜け終了時刻'
@@ -88,7 +88,7 @@ if "success_msg" not in st.session_state: st.session_state.success_msg = None
 if 'remarks_new' not in st.session_state: st.session_state.remarks_new = ""
 if 'remarks_batch' not in st.session_state: st.session_state.remarks_batch = ""
 if "service_type" not in st.session_state: st.session_state.service_type = "就労継続支援B型"
-if "show_all_services" not in st.session_state: st.session_state.show_all_services = False # 🚨 ステルス機能用フラグ
+if "show_all_services" not in st.session_state: st.session_state.show_all_services = False
 
 # ==========================================
 # テーマカラーの動的設定
@@ -486,6 +486,7 @@ def on_full_attendance_change():
         st.session_state.st_new = ""
         st.session_state.et_new = ""
         st.session_state.meal_new = "×"
+        if "snack_new" in st.session_state: st.session_state.snack_new = "×"
         st.session_state.tardy_new = False
         st.session_state.nakanuke_new = False
     else:
@@ -497,18 +498,21 @@ def on_full_attendance_change():
             st.session_state.st_new = init_settings.get('start_time', '10:00')
             st.session_state.et_new = init_settings.get('end_time', '15:00')
         st.session_state.meal_new = "〇"
+        if "snack_new" in st.session_state: st.session_state.snack_new = "〇"
 
 def on_b_full_attendance_change():
     if st.session_state.b_full_ab:
         st.session_state.b_st = ""
         st.session_state.b_et = ""
         st.session_state.b_meal = "×"
+        if "b_snack" in st.session_state: st.session_state.b_snack = "×"
         st.session_state.b_tardy = False
         st.session_state.b_nakanuke = False
     else:
         st.session_state.b_st = init_settings.get('start_time', '10:00')
         st.session_state.b_et = init_settings.get('end_time', '15:00')
         st.session_state.b_meal = "〇"
+        if "b_snack" in st.session_state: st.session_state.b_snack = "〇"
 
 # ==========================================
 # メイン画面の初期化
@@ -537,7 +541,6 @@ if not st.session_state.logged_in:
         staff_pw = init_settings.get('staff_password', '1111')
         admin_pw = init_settings.get('admin_password', '9999')
     
-    # 🚨 修正: 0000が入力された時のみ「管理者権限＋全サービス表示」の裏モードを起動する
     if st.button("ログイン", type="primary", use_container_width=True):
         if password == "0000":
             st.session_state.logged_in = True
@@ -585,7 +588,6 @@ else:
 
     st.markdown("<div style='font-size: 0.9rem; font-weight: bold; color: #666; margin-top: 15px; margin-bottom: 5px;'>対象サービス切り替え</div>", unsafe_allow_html=True)
     
-    # 🚨 修正: ステルスフラグに応じてドロップダウンの選択肢を切り替える
     service_options = ["就労継続支援B型", "生活介護"]
     if st.session_state.get("show_all_services", False):
         service_options.extend(["児童発達支援", "放課後等デイサービス"])
@@ -634,11 +636,10 @@ else:
         today_date = datetime.now().date()
         is_sat_today = (today_date.weekday() == 5)
 
-        if 'st_new' not in st.session_state: 
-            st.session_state.st_new = init_settings.get('SAT_start_time', '10:00') if is_sat_today else init_settings.get('start_time', '10:00')
-        if 'et_new' not in st.session_state: 
-            st.session_state.et_new = init_settings.get('SAT_end_time', '12:00') if is_sat_today else init_settings.get('end_time', '15:00')
+        if 'st_new' not in st.session_state: st.session_state.st_new = init_settings.get('SAT_start_time', '10:00') if is_sat_today else init_settings.get('start_time', '10:00')
+        if 'et_new' not in st.session_state: st.session_state.et_new = init_settings.get('SAT_end_time', '12:00') if is_sat_today else init_settings.get('end_time', '15:00')
         if 'meal_new' not in st.session_state: st.session_state.meal_new = "〇"
+        if 'snack_new' not in st.session_state: st.session_state.snack_new = "〇"
 
         st.write("### 基本情報")
         record_date = st.date_input("記載日", today_date, key="date_new", on_change=on_date_new_change)
@@ -724,10 +725,15 @@ else:
             transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key="tr_new", disabled=is_all_absent)
 
         meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key="meal_new", disabled=is_all_absent)
-        
         meal_amount_val = ""
         if not is_all_absent and meal_provided == "〇":
             meal_amount_val = st.number_input("食事量", min_value=0, max_value=10, value=10, step=1, key="meal_amt_new")
+
+        if is_child_service:
+            snack_provided = st.radio("おやつ提供", ["〇", "×"], horizontal=True, key="snack_new", disabled=is_all_absent)
+            snack_amount = ""
+            if not is_all_absent and snack_provided == "〇":
+                snack_amount = st.selectbox("おやつ量", ["完食", "半分", "一口", "食べず"], key="snack_amt_new")
 
         if enable_record:
             st.write("### 1日の記録")
@@ -790,40 +796,43 @@ else:
                             final_remarks += f"対応: {absent_action}"
                         if remarks:
                             final_remarks += f" / {remarks}"
+
+                    row_dict = {
+                        '記載日': record_date.strftime('%Y-%m-%d'), 
+                        '名前': client_name, 
+                        '受給者証番号': recipient_num, 
+                        '出欠状況': attendance_status,
+                        '開始時間': "" if is_all_absent else input_start, 
+                        '終了時間': "" if is_all_absent else input_end, 
+                        '算定時間数': calc_time,
+                        '送迎往路': "" if is_all_absent else transport_out, 
+                        '送迎復路': "" if is_all_absent else transport_ret, 
+                        '食事提供': "" if is_all_absent else meal_provided,
+                        '食事量': "" if (is_all_absent or meal_provided == "×") else str(meal_amount_val),
+                        '体調': "" if is_all_absent else condition,
+                        eng_label: "" if is_all_absent else engagement,
+                        men_label: "" if is_all_absent else mental,
+                        '特別な支援': "" if is_all_absent else support,
+                        '特記事項': final_remarks,
+                        '遅刻・早退': "" if is_all_absent else ("〇" if is_tardy_early else ""),
+                        '計画': "" if is_all_absent else (tardy_planned if is_tardy_early else ""),
+                        '都合': "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
+                        '計画開始時刻': "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
+                        '計画終了時刻': "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else ""),
+                        '中抜け開始時刻': "" if is_all_absent else nakanuke_start,
+                        '中抜け終了時刻': "" if is_all_absent else nakanuke_end
+                    }
+                    if is_child_service:
+                        row_dict['おやつ提供'] = "" if is_all_absent else snack_provided
+                        row_dict['おやつ量'] = "" if (is_all_absent or snack_provided == "×") else snack_amount
                     
-                    row_data = [
-                        record_date.strftime('%Y-%m-%d'), 
-                        client_name, 
-                        recipient_num, 
-                        attendance_status,
-                        "" if is_all_absent else input_start, 
-                        "" if is_all_absent else input_end, 
-                        calc_time,
-                        "" if is_all_absent else transport_out, 
-                        "" if is_all_absent else transport_ret, 
-                        "" if is_all_absent else meal_provided,
-                        "" if (is_all_absent or meal_provided == "×") else str(meal_amount_val),
-                        "" if is_all_absent else condition,
-                        "" if is_all_absent else engagement,
-                        "" if is_all_absent else mental,
-                        "" if is_all_absent else support,
-                        final_remarks,
-                        "" if is_all_absent else ("〇" if is_tardy_early else ""),
-                        "" if is_all_absent else (tardy_planned if is_tardy_early else ""),
-                        "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
-                        "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
-                        "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else ""),
-                        "" if is_all_absent else nakanuke_start,
-                        "" if is_all_absent else nakanuke_end
-                    ]
-                    
-                    new_df = pd.DataFrame([row_data], columns=current_columns)
+                    new_df = pd.DataFrame([row_dict], columns=current_columns)
                     updated_df = pd.concat([record_df, new_df], ignore_index=True)
                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                     
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                         st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
+                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
                         for k in reset_keys:
                             if k in st.session_state:
                                 del st.session_state[k]
@@ -838,6 +847,7 @@ else:
             if 'b_st' not in st.session_state: st.session_state.b_st = init_settings.get('start_time', '10:00')
             if 'b_et' not in st.session_state: st.session_state.b_et = init_settings.get('end_time', '15:00')
             if 'b_meal' not in st.session_state: st.session_state.b_meal = "〇"
+            if 'b_snack' not in st.session_state: st.session_state.b_snack = "〇"
 
             st.write("### 一括登録する内容を設定してください")
             batch_dates = st.date_input('対象期間', value=(datetime.now().date(), datetime.now().date()), key="date_batch")
@@ -934,10 +944,15 @@ else:
                 b_transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key='b_tr', disabled=is_b_all_absent)
 
             b_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='b_meal', disabled=is_b_all_absent)
-            
             b_meal_amount_val = ""
             if not is_b_all_absent and b_meal_provided == "〇":
                 b_meal_amount_val = st.number_input("食事量", min_value=0, max_value=10, value=10, step=1, key="b_meal_amt")
+
+            if is_child_service:
+                b_snack_provided = st.radio("おやつ提供", ["〇", "×"], horizontal=True, key='b_snack', disabled=is_b_all_absent)
+                b_snack_amount = ""
+                if not is_b_all_absent and b_snack_provided == "〇":
+                    b_snack_amount = st.selectbox("おやつ量", ["完食", "半分", "一口", "食べず"], key="b_snack_amt")
 
             if enable_record:
                 st.write("### 1日の記録")
@@ -1044,31 +1059,36 @@ else:
                                         current_end = b_end
                                         current_calc_time = b_calc_time
                                     
-                                    new_rows_df.append([
-                                        current_date.strftime('%Y-%m-%d'),
-                                        b_client_name,
-                                        b_recipient_num,
-                                        b_attendance,
-                                        "" if is_b_all_absent else current_start,
-                                        "" if is_b_all_absent else current_end,
-                                        current_calc_time,
-                                        "" if is_b_all_absent else b_transport_out,
-                                        "" if is_b_all_absent else b_transport_ret,
-                                        "" if is_b_all_absent else b_meal_provided,
-                                        "" if (is_b_all_absent or b_meal_provided == "×") else str(b_meal_amount_val),
-                                        "" if is_b_all_absent else b_condition,
-                                        "" if is_b_all_absent else b_engagement,
-                                        "" if is_b_all_absent else b_mental,
-                                        "" if is_b_all_absent else b_support,
-                                        b_final_remarks,
-                                        "" if is_b_all_absent else ("〇" if b_is_tardy_early else ""),
-                                        "" if is_b_all_absent else (b_tardy_planned if b_is_tardy_early else ""),
-                                        "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
-                                        "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
-                                        "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
-                                        "" if is_b_all_absent else b_nakanuke_start,
-                                        "" if is_b_all_absent else b_nakanuke_end
-                                    ])
+                                    current_row_dict = {
+                                        '記載日': current_date.strftime('%Y-%m-%d'),
+                                        '名前': b_client_name,
+                                        '受給者証番号': b_recipient_num,
+                                        '出欠状況': b_attendance,
+                                        '開始時間': "" if is_b_all_absent else current_start,
+                                        '終了時間': "" if is_b_all_absent else current_end,
+                                        '算定時間数': current_calc_time,
+                                        '送迎往路': "" if is_b_all_absent else b_transport_out,
+                                        '送迎復路': "" if is_b_all_absent else b_transport_ret,
+                                        '食事提供': "" if is_b_all_absent else b_meal_provided,
+                                        '食事量': "" if (is_b_all_absent or b_meal_provided == "×") else str(b_meal_amount_val),
+                                        '体調': "" if is_b_all_absent else b_condition,
+                                        eng_label: "" if is_b_all_absent else b_engagement,
+                                        men_label: "" if is_b_all_absent else b_mental,
+                                        '特別な支援': "" if is_b_all_absent else b_support,
+                                        '特記事項': b_final_remarks,
+                                        '遅刻・早退': "" if is_b_all_absent else ("〇" if b_is_tardy_early else ""),
+                                        '計画': "" if is_b_all_absent else (b_tardy_planned if b_is_tardy_early else ""),
+                                        '都合': "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
+                                        '計画開始時刻': "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
+                                        '計画終了時刻': "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
+                                        '中抜け開始時刻': "" if is_b_all_absent else b_nakanuke_start,
+                                        '中抜け終了時刻': "" if is_b_all_absent else b_nakanuke_end
+                                    }
+                                    if is_child_service:
+                                        current_row_dict['おやつ提供'] = "" if is_b_all_absent else b_snack_provided
+                                        current_row_dict['おやつ量'] = "" if (is_b_all_absent or b_snack_provided == "×") else b_snack_amount
+
+                                    new_rows_df.append(current_row_dict)
                                 
                                 if not new_rows_df:
                                     st.warning('登録対象となる日がありません')
@@ -1079,7 +1099,7 @@ else:
                                     
                                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                         st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
+                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
                                         for k in reset_keys:
                                             if k in st.session_state:
                                                 del st.session_state[k]
@@ -1107,6 +1127,7 @@ else:
             if 'all_st' not in st.session_state: st.session_state.all_st = init_settings.get('start_time', '10:00')
             if 'all_et' not in st.session_state: st.session_state.all_et = init_settings.get('end_time', '15:00')
             if 'all_meal' not in st.session_state: st.session_state.all_meal = "〇"
+            if 'all_snack' not in st.session_state: st.session_state.all_snack = "〇"
 
             st.write("### サービス提供状況 (デフォルト設定)")
             col_alls, col_alle = st.columns(2)
@@ -1122,10 +1143,15 @@ else:
                 all_transport_ret = st.radio("送迎復路", ["〇", "×"], horizontal=True, key='all_tr')
 
             all_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='all_meal')
-            
             all_meal_amount_val = ""
             if all_meal_provided == "〇":
                 all_meal_amount_val = st.number_input("食事量 (デフォルト)", min_value=0, max_value=10, value=10, step=1, key="all_meal_amt")
+
+            if is_child_service:
+                all_snack_provided = st.radio("おやつ提供", ["〇", "×"], horizontal=True, key='all_snack')
+                all_snack_amount = ""
+                if all_snack_provided == "〇":
+                    all_snack_amount = st.selectbox("おやつ量 (デフォルト)", ["完食", "半分", "一口", "食べず"], key="all_snack_amt")
 
             if enable_record:
                 st.write("### 1日の記録 (デフォルト設定)")
@@ -1187,31 +1213,36 @@ else:
                                 for c_name in valid_clients:
                                     c_recipient_num = current_client_dict.get(c_name, "")
                                     
-                                    new_rows_df.append([
-                                        current_date.strftime('%Y-%m-%d'),
-                                        c_name,
-                                        c_recipient_num,
-                                        "出席",
-                                        current_start,
-                                        current_end,
-                                        current_calc_time,
-                                        all_transport_out,
-                                        all_transport_ret,
-                                        all_meal_provided,
-                                        str(all_meal_amount_val) if all_meal_provided == "〇" else "",
-                                        all_condition,
-                                        all_engagement,
-                                        all_mental,
-                                        all_support,
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        "",
-                                        ""
-                                    ])
+                                    current_row_dict = {
+                                        '記載日': current_date.strftime('%Y-%m-%d'),
+                                        '名前': c_name,
+                                        '受給者証番号': c_recipient_num,
+                                        '出欠状況': "出席",
+                                        '開始時間': current_start,
+                                        '終了時間': current_end,
+                                        '算定時間数': current_calc_time,
+                                        '送迎往路': all_transport_out,
+                                        '送迎復路': all_transport_ret,
+                                        '食事提供': all_meal_provided,
+                                        '食事量': str(all_meal_amount_val) if all_meal_provided == "〇" else "",
+                                        '体調': all_condition,
+                                        eng_label: all_engagement,
+                                        men_label: all_mental,
+                                        '特別な支援': all_support,
+                                        '特記事項': "",
+                                        '遅刻・早退': "",
+                                        '計画': "",
+                                        '都合': "",
+                                        '計画開始時刻': "",
+                                        '計画終了時刻': "",
+                                        '中抜け開始時刻': "",
+                                        '中抜け終了時刻': ""
+                                    }
+                                    if is_child_service:
+                                        current_row_dict['おやつ提供'] = all_snack_provided
+                                        current_row_dict['おやつ量'] = all_snack_amount if all_snack_provided == "〇" else ""
+
+                                    new_rows_df.append(current_row_dict)
                             
                             if not new_rows_df:
                                 st.warning('登録対象となる日がありません')
@@ -1222,7 +1253,7 @@ else:
                                 
                                 if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                     st.session_state.success_msg = f'合計 {len(new_rows_df)}件の実績を一括登録しました、「過去の記録を編集」タブから個別修正を行ってください'
-                                    reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
+                                    reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_snack', 'all_snack_amt', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
                                     for k in reset_keys:
                                         if k in st.session_state:
                                             del st.session_state[k]
@@ -1273,27 +1304,32 @@ else:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
+                        col_config = {
+                            "名前": st.column_config.SelectboxColumn("名前", options=client_names),
+                            "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
+                            "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×"]),
+                            "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
+                            "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
+                            "食事量": st.column_config.NumberColumn("食事量", min_value=0, max_value=10, step=1),
+                            "体調": st.column_config.SelectboxColumn("体調", options=cond_opts),
+                            eng_label: st.column_config.SelectboxColumn(eng_label, options=eng_opts),
+                            men_label: st.column_config.SelectboxColumn(men_label, options=men_opts),
+                            "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=sup_opts),
+                            "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
+                            "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
+                            "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
+                            "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
+                            "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
+                            "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"),
+                            "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"),
+                        }
+                        if is_child_service:
+                            col_config["おやつ提供"] = st.column_config.SelectboxColumn("おやつ提供", options=["〇", "×"])
+                            col_config["おやつ量"] = st.column_config.SelectboxColumn("おやつ量", options=["完食", "半分", "一口", "食べず"])
+
                         edited_df = st.data_editor(
                             st.session_state.edit_cache,
-                            column_config={
-                                "名前": st.column_config.SelectboxColumn("名前", options=client_names),
-                                "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
-                                "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×"]),
-                                "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×"]),
-                                "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
-                                "食事量": st.column_config.NumberColumn("食事量", min_value=0, max_value=10, step=1),
-                                "体調": st.column_config.SelectboxColumn("体調", options=cond_opts),
-                                eng_label: st.column_config.SelectboxColumn(eng_label, options=eng_opts),
-                                men_label: st.column_config.SelectboxColumn(men_label, options=men_opts),
-                                "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=sup_opts),
-                                "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
-                                "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
-                                "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
-                                "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
-                                "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
-                                "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"),
-                                "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"),
-                            },
+                            column_config=col_config,
                             num_rows="dynamic", use_container_width=True, key="data_editor"
                         )
                         
@@ -1305,7 +1341,9 @@ else:
                             cached_status = st.session_state.edit_cache.at[idx, '出欠状況'] if idx in st.session_state.edit_cache.index else ""
                             
                             cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
-                            
+                            if is_child_service:
+                                cols_to_clear.extend(['おやつ提供', 'おやつ量'])
+
                             if current_status == '欠席':
                                 for col in cols_to_clear:
                                     if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
