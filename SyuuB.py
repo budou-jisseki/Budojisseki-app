@@ -20,6 +20,7 @@ INIT_FILE = 'config.ini'
 JSON_KEY_FILE = 'secret.json'
 SPREADSHEET_KEY = '1JQe44mjZAUo2oAyVANerXpgXjeM5z_XvJZIjB_TrN5U'
 MASTER_SHEET_NAME = '利用者マスタ'
+LOG_SHEET_NAME = 'システムログ'
 
 COLUMNS_ADULT = [
     '記載日', '名前', '受給者証番号', '出欠状況',
@@ -89,6 +90,7 @@ if 'remarks_new' not in st.session_state: st.session_state.remarks_new = ""
 if 'remarks_batch' not in st.session_state: st.session_state.remarks_batch = ""
 if "service_type" not in st.session_state: st.session_state.service_type = "就労継続支援B型"
 if "show_all_services" not in st.session_state: st.session_state.show_all_services = False
+if "last_action_time" not in st.session_state: st.session_state.last_action_time = None
 
 # ==========================================
 # テーマカラーの動的設定
@@ -221,6 +223,36 @@ def generate_qr(url):
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+def write_system_log(client, category, target, count):
+    """稼働時間・アクセス記録をシステムログシートに追記する関数"""
+    try:
+        now = datetime.now()
+        elapsed = 0
+        if st.session_state.last_action_time:
+            elapsed = int((now - st.session_state.last_action_time).total_seconds())
+        st.session_state.last_action_time = now
+        
+        try:
+            sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(LOG_SHEET_NAME)
+        except Exception:
+            # シートが存在しない場合は新規作成
+            spreadsheet = client.open_by_key(SPREADSHEET_KEY)
+            sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="7")
+            sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス'])
+        
+        log_row = [
+            now.strftime('%Y-%m-%d %H:%M:%S'),
+            st.session_state.get('role', '不明'),
+            category,
+            str(target),
+            count,
+            elapsed,
+            st.session_state.get('service_type', '')
+        ]
+        sheet.append_row(log_row)
+    except Exception:
+        pass # ログ記録の失敗で本処理を止めないようエラーを握り潰す
 
 def load_client_master(client):
     client_dict = {'就労継続支援B型': {}, '生活介護': {}, '児童発達支援': {}, '放課後等デイサービス': {}}
@@ -552,16 +584,22 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.session_state.role = "管理者"
             st.session_state.show_all_services = True
+            st.session_state.last_action_time = datetime.now()
+            write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         elif password == staff_pw:
             st.session_state.logged_in = True
             st.session_state.role = "一般職員"
             st.session_state.show_all_services = False
+            st.session_state.last_action_time = datetime.now()
+            write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         elif password == admin_pw:
             st.session_state.logged_in = True
             st.session_state.role = "管理者"
             st.session_state.show_all_services = False
+            st.session_state.last_action_time = datetime.now()
+            write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         else:
             st.error("パスワードが間違っています")
@@ -589,6 +627,7 @@ else:
             st.rerun()
     with col3:
         if st.button("退出", use_container_width=True):
+            write_system_log(g_client, "退出", "-", 0)
             st.session_state.clear()
             st.rerun()
 
@@ -856,6 +895,7 @@ else:
                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                     
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                        write_system_log(g_client, "新規入力", client_name, 1)
                         st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
                         reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'temp_new', 'exc_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
                         for k in reset_keys:
@@ -1142,6 +1182,7 @@ else:
                                     updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                                     
                                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                                        write_system_log(g_client, "個人・複数日入力", b_client_name, len(new_rows_df))
                                         st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
                                         reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_temp', 'b_exc', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
                                         for k in reset_keys:
@@ -1315,6 +1356,7 @@ else:
                                 updated_df = updated_df.drop_duplicates(subset=['記載日', '名前'], keep='last').reset_index(drop=True)
                                 
                                 if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
+                                    write_system_log(g_client, "全員一括入力", f"対象{len(valid_clients)}名", len(new_rows_df))
                                     st.session_state.success_msg = f'合計 {len(new_rows_df)}件の実績を一括登録しました、「過去の記録を編集」タブから個別修正を行ってください'
                                     reset_keys = ['all_st', 'all_et', 'all_meal', 'all_meal_amt', 'all_snack', 'all_snack_amt', 'all_temp', 'all_exc', 'all_to', 'all_tr', 'all_cond', 'all_eng', 'all_men', 'all_sup']
                                     for k in reset_keys:
@@ -1472,6 +1514,7 @@ else:
                             record_df = record_df.sort_values(by=['記載日', '名前']).reset_index(drop=True)
                             
                             if update_entire_sheet(g_client, current_sheet_name, record_df, init_settings):
+                                write_system_log(g_client, "データ編集保存", "-", len(edited_df))
                                 st.session_state.success_msg = '記録をスプレッドシートに更新しました'
                                 st.session_state.edit_need_reload = True
                                 st.rerun()
