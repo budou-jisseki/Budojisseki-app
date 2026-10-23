@@ -619,7 +619,7 @@ if not st.session_state.logged_in:
         admin_pw = init_settings.get('admin_password', '9999')
     
     if st.button("ログイン", type="primary", use_container_width=True):
-        if password == "0000":
+        if password == "2026":
             last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
             st.session_state.role = "開発管理者"
