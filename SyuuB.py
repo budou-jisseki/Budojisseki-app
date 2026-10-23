@@ -215,6 +215,21 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
+def get_client_ip():
+    """クライアントのIPアドレスを取得（Cloud Run等のプロキシ環境を想定）"""
+    try:
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            if "X-Forwarded-For" in st.context.headers:
+                return st.context.headers["X-Forwarded-For"].split(",")[0].strip()
+            
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        headers = _get_websocket_headers()
+        if headers and "X-Forwarded-For" in headers:
+            return headers.get("X-Forwarded-For").split(",")[0].strip()
+    except Exception:
+        pass
+    return "取得不可"
+
 def generate_qr(url):
     qr = qrcode.QRCode(version=1, box_size=6, border=2)
     qr.add_data(url)
@@ -225,7 +240,7 @@ def generate_qr(url):
     return buf.getvalue()
 
 def write_system_log(client, category, target, count):
-    """稼働時間・アクセス記録をシステムログシートに追記する関数"""
+    """稼働時間・アクセス記録・IPアドレスをシステムログシートに追記する関数"""
     try:
         now = datetime.now()
         elapsed = 0
@@ -233,13 +248,14 @@ def write_system_log(client, category, target, count):
             elapsed = int((now - st.session_state.last_action_time).total_seconds())
         st.session_state.last_action_time = now
         
+        client_ip = get_client_ip()
+        
         try:
             sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(LOG_SHEET_NAME)
         except Exception:
-            # シートが存在しない場合は新規作成
             spreadsheet = client.open_by_key(SPREADSHEET_KEY)
-            sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="7")
-            sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス'])
+            sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="8")
+            sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス', 'IPアドレス'])
         
         log_row = [
             now.strftime('%Y-%m-%d %H:%M:%S'),
@@ -248,11 +264,12 @@ def write_system_log(client, category, target, count):
             str(target),
             count,
             elapsed,
-            st.session_state.get('service_type', '')
+            st.session_state.get('service_type', ''),
+            client_ip
         ]
         sheet.append_row(log_row)
     except Exception:
-        pass # ログ記録の失敗で本処理を止めないようエラーを握り潰す
+        pass
 
 def load_client_master(client):
     client_dict = {'就労継続支援B型': {}, '生活介護': {}, '児童発達支援': {}, '放課後等デイサービス': {}}
@@ -582,7 +599,7 @@ if not st.session_state.logged_in:
     if st.button("ログイン", type="primary", use_container_width=True):
         if password == "0000":
             st.session_state.logged_in = True
-            st.session_state.role = "管理者"
+            st.session_state.role = "開発管理者"
             st.session_state.show_all_services = True
             st.session_state.last_action_time = datetime.now()
             write_system_log(g_client, "ログイン", "-", 0)
@@ -659,7 +676,7 @@ else:
     enable_record = init_settings.get('enable_daily_record', 'True').lower() == 'true'
     show_absent_action = init_settings.get('show_absent_action', 'True').lower() == 'true'
 
-    if st.session_state.role == "管理者":
+    if st.session_state.role in ["管理者", "開発管理者"]:
         menu_tabs = ["新規入力", "個人・複数日入力", "全員一括入力", "過去の記録を編集"]
     else:
         menu_tabs = ["新規入力"]
@@ -906,7 +923,7 @@ else:
     # ----------------------------------------
     # 管理者のみの画面
     # ----------------------------------------
-    if st.session_state.role == "管理者":
+    if st.session_state.role in ["管理者", "開発管理者"]:
         
         if selected_tab == "個人・複数日入力":
             if 'b_st' not in st.session_state: st.session_state.b_st = init_settings.get('start_time', '10:00')
