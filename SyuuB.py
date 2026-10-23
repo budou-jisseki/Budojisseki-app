@@ -6,11 +6,14 @@ from google.oauth2.service_account import Credentials
 import google.auth
 import os
 import configparser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import socket
 import qrcode
 from io import BytesIO
 import jpholiday
+
+# 日本時間（JST）の定義
+JST = timezone(timedelta(hours=+9), 'JST')
 
 # ==========================================
 # 設定とファイルパス
@@ -261,6 +264,9 @@ def write_system_log(client, category, target, count):
         now = datetime.now(JST)
         elapsed = 0
         if st.session_state.last_action_time:
+            # 念のため、過去のセッションでtimezone無し(naive)の時間が残っていた場合のエラーを回避
+            if st.session_state.last_action_time.tzinfo is None:
+                st.session_state.last_action_time = st.session_state.last_action_time.replace(tzinfo=JST)
             elapsed = int((now - st.session_state.last_action_time).total_seconds())
         st.session_state.last_action_time = now
         
