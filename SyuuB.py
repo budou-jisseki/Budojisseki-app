@@ -91,6 +91,7 @@ if 'remarks_batch' not in st.session_state: st.session_state.remarks_batch = ""
 if "service_type" not in st.session_state: st.session_state.service_type = "就労継続支援B型"
 if "show_all_services" not in st.session_state: st.session_state.show_all_services = False
 if "last_action_time" not in st.session_state: st.session_state.last_action_time = None
+if "last_access_display" not in st.session_state: st.session_state.last_access_display = None
 
 # ==========================================
 # テーマカラーの動的設定
@@ -238,6 +239,21 @@ def generate_qr(url):
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+def get_last_access_info(client):
+    """開発管理者を除く、直近のシステム操作記録をログシートから取得する関数"""
+    if client is None:
+        return None
+    try:
+        sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(LOG_SHEET_NAME)
+        records = sheet.get_all_values()
+        
+        for row in reversed(records):
+            if len(row) >= 3 and row[1] != "開発管理者" and row[1] != "権限":
+                return f"{row[0]} ({row[1]}による{row[2]})"
+    except Exception:
+        pass
+    return "記録なし"
 
 def write_system_log(client, category, target, count):
     """稼働時間・アクセス記録・IPアドレスをシステムログシートに追記する関数"""
@@ -598,24 +614,30 @@ if not st.session_state.logged_in:
     
     if st.button("ログイン", type="primary", use_container_width=True):
         if password == "0000":
+            last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
             st.session_state.role = "開発管理者"
             st.session_state.show_all_services = True
             st.session_state.last_action_time = datetime.now()
+            st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         elif password == staff_pw:
+            last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
             st.session_state.role = "一般職員"
             st.session_state.show_all_services = False
             st.session_state.last_action_time = datetime.now()
+            st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         elif password == admin_pw:
+            last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
             st.session_state.role = "管理者"
             st.session_state.show_all_services = False
             st.session_state.last_action_time = datetime.now()
+            st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         else:
@@ -639,6 +661,8 @@ else:
     col1, col2, col3 = st.columns([1.5, 1, 1])
     with col1:
         st.write(f"権限: {st.session_state.role}")
+        if st.session_state.get('last_access_display'):
+            st.markdown(f"<div style='font-size: 0.8rem; color: #666; margin-top: -10px;'>最終アクセス: {st.session_state.last_access_display}</div>", unsafe_allow_html=True)
     with col2:
         if st.button('更新', use_container_width=True):
             st.rerun()
