@@ -19,6 +19,7 @@ JST = timezone(timedelta(hours=+9), 'JST')
 # 設定とファイルパス
 # ==========================================
 INIT_FILE = 'config.ini'
+LOGIN_FILE = 'Login.ini'
 
 JSON_KEY_FILE = 'secret.json'
 SPREADSHEET_KEY = '1JQe44mjZAUo2oAyVANerXpgXjeM5z_XvJZIjB_TrN5U'
@@ -88,6 +89,7 @@ st.set_page_config(page_title="実績入力システム", page_icon="📝", layo
 # ==========================================
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "role" not in st.session_state: st.session_state.role = ""
+if "user_id" not in st.session_state: st.session_state.user_id = ""
 if "success_msg" not in st.session_state: st.session_state.success_msg = None
 if 'remarks_new' not in st.session_state: st.session_state.remarks_new = ""
 if 'remarks_batch' not in st.session_state: st.session_state.remarks_batch = ""
@@ -243,6 +245,37 @@ def generate_qr(url):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
+def load_login_settings():
+    """Login.iniからログインコード一覧を読み込む"""
+    logins = {
+        'Developer': ['0000'],
+        'Admin': ['9999'],
+        'GeneralStaff': ['1111']
+    }
+    config = configparser.ConfigParser()
+    if os.path.exists(LOGIN_FILE):
+        try:
+            config.read(LOGIN_FILE, encoding='utf-8')
+            if config.has_section('Developer'):
+                logins['Developer'] = config.options('Developer')
+            if config.has_section('Admin'):
+                logins['Admin'] = config.options('Admin')
+            if config.has_section('GeneralStaff'):
+                logins['GeneralStaff'] = config.options('GeneralStaff')
+        except Exception:
+            pass
+    else:
+        # 存在しない場合はデフォルトファイルを作成
+        try:
+            config['Developer'] = {'0000': '開発者'}
+            config['Admin'] = {'9999': '管理者デフォルト'}
+            config['GeneralStaff'] = {'1111': '一般デフォルト'}
+            with open(LOGIN_FILE, 'w', encoding='utf-8') as f:
+                config.write(f)
+        except Exception:
+            pass
+    return logins
+
 def get_last_access_info(client):
     """開発管理者を除く、直近のシステム操作記録をログシートから取得する関数"""
     if client is None:
@@ -259,25 +292,26 @@ def get_last_access_info(client):
     return "記録なし"
 
 def write_system_log(client, category, target, count):
-    """稼働時間・アクセス記録・IPアドレスをシステムログシートに追記する関数"""
+    """稼働時間・アクセス記録・IPアドレス・操作者IDをシステムログシートに追記する関数"""
     try:
         now = datetime.now(JST)
         elapsed = 0
         if st.session_state.last_action_time:
-            # 念のため、過去のセッションでtimezone無し(naive)の時間が残っていた場合のエラーを回避
             if st.session_state.last_action_time.tzinfo is None:
                 st.session_state.last_action_time = st.session_state.last_action_time.replace(tzinfo=JST)
             elapsed = int((now - st.session_state.last_action_time).total_seconds())
         st.session_state.last_action_time = now
         
         client_ip = get_client_ip()
+        user_id = st.session_state.get('user_id', '不明')
         
         try:
             sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(LOG_SHEET_NAME)
         except Exception:
             spreadsheet = client.open_by_key(SPREADSHEET_KEY)
-            sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="8")
-            sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス', 'IPアドレス'])
+            # 初回作成時は9列で作成
+            sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="9")
+            sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス', 'IPアドレス', '操作者ID'])
         
         log_row = [
             now.strftime('%Y-%m-%d %H:%M:%S'),
@@ -287,7 +321,8 @@ def write_system_log(client, category, target, count):
             count,
             elapsed,
             st.session_state.get('service_type', ''),
-            client_ip
+            client_ip,
+            user_id
         ]
         sheet.append_row(log_row)
     except Exception:
@@ -340,8 +375,6 @@ def load_init_settings():
         'SAT_end_time': '12:00',
         'enable_daily_record': 'True',
         'show_absent_action': 'True',
-        'staff_password': '1111',
-        'admin_password': '9999',
         'exclude_label_1': '土曜日を除外する',
         'exclude_label_2': '日曜日・祝祭日を除外する'
     }
@@ -609,45 +642,32 @@ all_client_dict = load_client_master(g_client)
 # ==========================================
 if not st.session_state.logged_in:
     st.write("### ログイン")
-    password = st.text_input("パスワードを入力してください", type="password", autocomplete="new-password")
-    
-    try:
-        staff_pw = st.secrets.get("STAFF_PASSWORD", init_settings.get('staff_password', '1111'))
-        admin_pw = st.secrets.get("ADMIN_PASSWORD", init_settings.get('admin_password', '9999'))
-    except Exception:
-        staff_pw = init_settings.get('staff_password', '1111')
-        admin_pw = init_settings.get('admin_password', '9999')
+    login_settings = load_login_settings()
+    password = st.text_input("パスワード（職員コード）を入力してください", type="password", autocomplete="new-password")
     
     if st.button("ログイン", type="primary", use_container_width=True):
-        if password == "2026":
+        pass_lower = password.lower()
+        role = None
+        
+        if pass_lower in [p.lower() for p in login_settings.get('Developer', [])]:
+            role = "開発管理者"
+        elif pass_lower in [p.lower() for p in login_settings.get('Admin', [])]:
+            role = "管理者"
+        elif pass_lower in [p.lower() for p in login_settings.get('GeneralStaff', [])]:
+            role = "一般職員"
+            
+        if role:
             last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
-            st.session_state.role = "開発管理者"
-            st.session_state.show_all_services = True
-            st.session_state.last_action_time = datetime.now(JST)
-            st.session_state.last_access_display = last_access
-            write_system_log(g_client, "ログイン", "-", 0)
-            st.rerun()
-        elif password == staff_pw:
-            last_access = get_last_access_info(g_client)
-            st.session_state.logged_in = True
-            st.session_state.role = "一般職員"
-            st.session_state.show_all_services = False
-            st.session_state.last_action_time = datetime.now(JST)
-            st.session_state.last_access_display = last_access
-            write_system_log(g_client, "ログイン", "-", 0)
-            st.rerun()
-        elif password == admin_pw:
-            last_access = get_last_access_info(g_client)
-            st.session_state.logged_in = True
-            st.session_state.role = "管理者"
-            st.session_state.show_all_services = False
+            st.session_state.role = role
+            st.session_state.user_id = password  # 操作者IDを記録
+            st.session_state.show_all_services = (role == "開発管理者")
             st.session_state.last_action_time = datetime.now(JST)
             st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
         else:
-            st.error("パスワードが間違っています")
+            st.error("パスワード（職員コード）が間違っています")
 
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.write("スマホからアクセスする場合")
@@ -1193,7 +1213,7 @@ else:
                                         '名前': b_client_name,
                                         '受給者証番号': b_recipient_num,
                                         '出欠状況': b_attendance,
-                                        '開始時間': "" if is_b_all_absent else current_start,
+                                        '开始時間': "" if is_b_all_absent else current_start,
                                         '終了時間': "" if is_b_all_absent else current_end,
                                         '算定時間数': current_calc_time,
                                         '送迎往路': "" if is_b_all_absent else b_transport_out,
