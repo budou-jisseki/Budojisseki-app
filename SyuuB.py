@@ -258,7 +258,7 @@ def get_last_access_info(client):
 def write_system_log(client, category, target, count):
     """稼働時間・アクセス記録・IPアドレスをシステムログシートに追記する関数"""
     try:
-        now = datetime.now()
+        now = datetime.now(JST)
         elapsed = 0
         if st.session_state.last_action_time:
             elapsed = int((now - st.session_state.last_action_time).total_seconds())
@@ -561,7 +561,7 @@ def on_full_attendance_change():
         st.session_state.tardy_new = False
         st.session_state.nakanuke_new = False
     else:
-        selected_date = st.session_state.get('date_new', datetime.now().date())
+        selected_date = st.session_state.get('date_new', datetime.now(JST).date())
         if selected_date.weekday() == 5:
             st.session_state.st_new = init_settings.get('SAT_start_time', '10:00')
             st.session_state.et_new = init_settings.get('SAT_end_time', '12:00')
@@ -618,7 +618,7 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.session_state.role = "開発管理者"
             st.session_state.show_all_services = True
-            st.session_state.last_action_time = datetime.now()
+            st.session_state.last_action_time = datetime.now(JST)
             st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
@@ -627,7 +627,7 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.session_state.role = "一般職員"
             st.session_state.show_all_services = False
-            st.session_state.last_action_time = datetime.now()
+            st.session_state.last_action_time = datetime.now(JST)
             st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
@@ -636,7 +636,7 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.session_state.role = "管理者"
             st.session_state.show_all_services = False
-            st.session_state.last_action_time = datetime.now()
+            st.session_state.last_action_time = datetime.now(JST)
             st.session_state.last_access_display = last_access
             write_system_log(g_client, "ログイン", "-", 0)
             st.rerun()
@@ -719,7 +719,7 @@ else:
     # 新規入力画面
     # ----------------------------------------
     if selected_tab == "新規入力":
-        today_date = datetime.now().date()
+        today_date = datetime.now(JST).date()
         is_sat_today = (today_date.weekday() == 5)
 
         if 'st_new' not in st.session_state: st.session_state.st_new = init_settings.get('SAT_start_time', '10:00') if is_sat_today else init_settings.get('start_time', '10:00')
@@ -956,7 +956,7 @@ else:
             if 'b_snack' not in st.session_state: st.session_state.b_snack = "〇"
 
             st.write("### 一括登録する内容を設定してください")
-            batch_dates = st.date_input('対象期間', value=(datetime.now().date(), datetime.now().date()), key="date_batch")
+            batch_dates = st.date_input('対象期間', value=(datetime.now(JST).date(), datetime.now(JST).date()), key="date_batch")
             
             col_ex1, col_ex2 = st.columns(2)
             exc_1_checked = False
@@ -1233,7 +1233,7 @@ else:
 
         if selected_tab == "全員一括入力":
             st.write("### 全員一括登録する内容を設定してください")
-            batch_dates_all = st.date_input('対象期間', value=(datetime.now().date(), datetime.now().date()), key="date_all")
+            batch_dates_all = st.date_input('対象期間', value=(datetime.now(JST).date(), datetime.now(JST).date()), key="date_all")
             
             col_ex1_all, col_ex2_all = st.columns(2)
             exc_1_all_checked = False
@@ -1406,7 +1406,7 @@ else:
                                     st.rerun()
 
         if selected_tab == "過去の記録を編集":
-            today = datetime.now().date()
+            today = datetime.now(JST).date()
             edit_dates = st.date_input('カレンダーから編集する期間', value=(today, today), key='edit_dates')
             
             if len(edit_dates) == 2:
