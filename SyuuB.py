@@ -902,7 +902,7 @@ else:
                         '名前': client_name, 
                         '受給者証番号': recipient_num, 
                         '出欠状況': attendance_status,
-                        '開始時間': "" if is_all_absent else input_start, 
+                        '开始時間': "" if is_all_absent else input_start, 
                         '終了時間': "" if is_all_absent else input_end, 
                         '算定時間数': calc_time,
                         '送迎往路': "" if is_all_absent else transport_out, 
@@ -1258,9 +1258,9 @@ else:
 
             col_allt1, col_allt2 = st.columns(2)
             with col_allt1:
-                all_transport_out = st.radio("送迎往路", to_opts, horizontal=True, key='all_to')
+                all_transport_out = radio("送迎往路", to_opts, horizontal=True, key='all_to')
             with col_allt2:
-                all_transport_ret = st.radio("送迎復路", tr_opts, horizontal=True, key='all_tr')
+                all_transport_ret = radio("送迎復路", tr_opts, horizontal=True, key='all_tr')
 
             all_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='all_meal')
             all_meal_amount_val = ""
@@ -1521,11 +1521,13 @@ else:
                         response = AgGrid(
                             st.session_state.edit_cache,
                             gridOptions=gridOptions,
-                            update_mode=GridUpdateMode.MODEL_CHANGED,
+                            update_mode=GridUpdateMode.VALUE_CHANGED, # 変更時のみデータを送信
                             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
                             fit_columns_on_grid_load=False,
                             theme='balham', # よりExcelに近い高密度のテーマ
-                            allow_unsafe_jscode=True # カスタムデザイン（ゼブラ柄等）を適用するために必須
+                            allow_unsafe_jscode=True, # カスタムデザイン（ゼブラ柄等）を適用するために必須
+                            reload_data=False, # 表全体の再描画を抑止してスクロール位置を維持
+                            key='edit_grid' # 一意のキーでコンポーネントを固定
                         )
                         
                         # 編集後のデータフレームを取得
