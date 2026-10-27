@@ -1466,8 +1466,8 @@ else:
                             // ④ 日付が変わった行の上に青い罫線を入れる
                             if (params.node.rowIndex > 0) {
                                 var prevNode = params.api.getDisplayedRowAtIndex(params.node.rowIndex - 1);
-                                if (prevNode) {
-                                    var prevDate = params.api.getValue('記載日', prevNode);
+                                if (prevNode && prevNode.data) {
+                                    var prevDate = prevNode.data['記載日'];
                                     var currDate = params.node.data['記載日'];
                                     if (currDate !== prevDate) {
                                         style['borderTop'] = '2px solid #2196F3';
