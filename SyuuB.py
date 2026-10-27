@@ -1472,7 +1472,7 @@ else:
                         edited_display_df = st.data_editor(
                             display_df,
                             column_config=col_config,
-                            num_rows="dynamic", use_container_width=True, key="data_editor"
+                            use_container_width=True, key="data_editor"
                         )
                         
                         edited_df = edited_display_df.reset_index()
