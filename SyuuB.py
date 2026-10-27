@@ -1446,11 +1446,23 @@ else:
                         # -------------------------------------------------------------
                         gb = GridOptionsBuilder.from_dataframe(st.session_state.edit_cache)
                         
-                        gb.configure_default_column(editable=True)
+                        # --- 列のデフォルト設定（リサイズ可能、デフォルト幅） ---
+                        gb.configure_default_column(
+                            editable=True, 
+                            resizable=True, # 列幅のドラッグ変更を可能にする
+                            width=110       # デフォルトの幅
+                        )
                         
-                        # ② 列の固定（左側）
-                        gb.configure_column("記載日", pinned='left', width=110)
-                        gb.configure_column("名前", pinned='left', width=110)
+                        # --- ② 列の固定と個別の幅設定 ---
+                        gb.configure_column("記載日", pinned='left', width=120)
+                        gb.configure_column("名前", pinned='left', width=120)
+                        
+                        # 中身に合わせて幅を調整（長文が入りやすい「特記事項」などは広げる）
+                        gb.configure_column("特記事項", width=350)
+                        gb.configure_column("開始時間", width=100)
+                        gb.configure_column("終了時間", width=100)
+                        gb.configure_column("算定時間数", width=110)
+                        gb.configure_column("食事量", width=90)
                         
                         # ③ ゼブラ柄、④ 日付の区切り線（JavaScriptを使用してスタイル制御）
                         jscode = JsCode("""
@@ -1480,19 +1492,19 @@ else:
                         gb.configure_grid_options(getRowStyle=jscode)
                         
                         # プルダウン（セレクトボックス）の設定
-                        gb.configure_column("出欠状況", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["出席", "遅刻・早退", "中抜け", "欠席"]})
+                        gb.configure_column("出欠状況", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["出席", "遅刻・早退", "中抜け", "欠席"]}, width=110)
                         gb.configure_column("送迎往路", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×", "学校", "自宅", "なし"]})
                         gb.configure_column("送迎復路", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×", "自宅", "なし"]})
                         gb.configure_column("食事提供", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×"]})
                         gb.configure_column("体調", cellEditor='agSelectCellEditor', cellEditorParams={'values': cond_opts})
-                        gb.configure_column(eng_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': eng_opts})
-                        gb.configure_column(men_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': men_opts})
-                        gb.configure_column("特別な支援", cellEditor='agSelectCellEditor', cellEditorParams={'values': sup_opts})
-                        gb.configure_column("遅刻・早退", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]})
+                        gb.configure_column(eng_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': eng_opts}, width=180)
+                        gb.configure_column(men_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': men_opts}, width=160)
+                        gb.configure_column("特別な支援", cellEditor='agSelectCellEditor', cellEditorParams={'values': sup_opts}, width=180)
+                        gb.configure_column("遅刻・早退", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]}, width=110)
                         
                         if st.session_state.service_type == "生活介護" or is_child_service:
-                            gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]})
-                            gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]})
+                            gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
+                            gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
                             
                         if is_child_service:
                             gb.configure_column("おやつ提供", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×"]})
