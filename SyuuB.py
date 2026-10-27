@@ -222,7 +222,6 @@ def get_local_ip():
         return "127.0.0.1"
 
 def get_client_ip():
-    """クライアントのIPアドレスを取得（Cloud Run等のプロキシ環境を想定）"""
     try:
         if hasattr(st, 'context') and hasattr(st.context, 'headers'):
             if "X-Forwarded-For" in st.context.headers:
@@ -246,7 +245,6 @@ def generate_qr(url):
     return buf.getvalue()
 
 def load_login_settings():
-    """Login.iniからログインコード一覧を読み込む"""
     logins = {
         'Developer': ['0000'],
         'Admin': ['9999'],
@@ -265,7 +263,6 @@ def load_login_settings():
         except Exception:
             pass
     else:
-        # 存在しない場合はデフォルトファイルを作成
         try:
             config['Developer'] = {'0000': '開発者'}
             config['Admin'] = {'9999': '管理者デフォルト'}
@@ -277,7 +274,6 @@ def load_login_settings():
     return logins
 
 def get_last_access_info(client):
-    """開発管理者を除く、直近のシステム操作記録をログシートから取得する関数"""
     if client is None:
         return None
     try:
@@ -292,7 +288,6 @@ def get_last_access_info(client):
     return "記録なし"
 
 def write_system_log(client, category, target, count):
-    """稼働時間・アクセス記録・IPアドレス・操作者IDをシステムログシートに追記する関数"""
     try:
         now = datetime.now(JST)
         elapsed = 0
@@ -309,7 +304,6 @@ def write_system_log(client, category, target, count):
             sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(LOG_SHEET_NAME)
         except Exception:
             spreadsheet = client.open_by_key(SPREADSHEET_KEY)
-            # 初回作成時は9列で作成
             sheet = spreadsheet.add_worksheet(title=LOG_SHEET_NAME, rows="100", cols="9")
             sheet.append_row(['タイムスタンプ', '権限', '操作カテゴリ', '処理対象', '処理件数', '操作間隔(秒)', '対象サービス', 'IPアドレス', '操作者ID'])
         
@@ -469,9 +463,6 @@ def get_gspread_client():
     except Exception:
         return None
 
-# ==========================================
-# マーキング関連処理
-# ==========================================
 def get_exception_cells(row_idx, attendance):
     cells = []
     if attendance == "午前欠席":
@@ -496,9 +487,6 @@ def apply_marking_to_sheet(sheet, exceptions, start_row, end_row):
     except Exception as e:
         st.warning(f"スプレッドシートの網掛け処理でエラーが発生しました: {e}")
 
-# ==========================================
-# Google Sheets 操作関連処理
-# ==========================================
 def get_sheet_data(client, sheet_name, columns):
     try:
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
@@ -558,9 +546,6 @@ def clear_text(key):
     if key in st.session_state:
         st.session_state[key] = ""
 
-# ==========================================
-# 欠席時対応加算のカウント用関数
-# ==========================================
 def check_absence_addition_count(client, sheet_name, client_name, target_date, columns):
     df = get_sheet_data(client, sheet_name, columns)
     if df is None or df.empty:
@@ -578,9 +563,6 @@ def check_absence_addition_count(client, sheet_name, client_name, target_date, c
 
 init_settings = load_init_settings()
 
-# ==========================================
-# イベントコールバック処理
-# ==========================================
 def on_date_new_change():
     if not st.session_state.get('full_ab_new', False):
         selected_date = st.session_state.date_new
@@ -624,9 +606,6 @@ def on_b_full_attendance_change():
         st.session_state.b_meal = "〇"
         if "b_snack" in st.session_state: st.session_state.b_snack = "〇"
 
-# ==========================================
-# メイン画面の初期化
-# ==========================================
 app_title = f"{st.session_state.service_type} 実績入力" if st.session_state.logged_in else "実績入力システム"
 st.markdown(f'<h1 class="main-title">{app_title}</h1>', unsafe_allow_html=True)
 
@@ -637,9 +616,6 @@ if g_client is None and st.session_state.logged_in:
 
 all_client_dict = load_client_master(g_client)
 
-# ==========================================
-# ログイン画面
-# ==========================================
 if not st.session_state.logged_in:
     st.write("### ログイン")
     login_settings = load_login_settings()
@@ -660,7 +636,7 @@ if not st.session_state.logged_in:
             last_access = get_last_access_info(g_client)
             st.session_state.logged_in = True
             st.session_state.role = role
-            st.session_state.user_id = password  # 操作者IDを記録
+            st.session_state.user_id = password
             st.session_state.show_all_services = (role == "開発管理者")
             st.session_state.last_action_time = datetime.now(JST)
             st.session_state.last_access_display = last_access
@@ -676,9 +652,6 @@ if not st.session_state.logged_in:
     st.markdown(f"<div style='font-size:0.9rem; color:#666;'>{network_url}</div>", unsafe_allow_html=True)
     st.image(generate_qr(network_url), width=180)
 
-# ==========================================
-# メイン画面
-# ==========================================
 else:
     if st.session_state.success_msg:
         st.success(st.session_state.success_msg)
@@ -741,9 +714,6 @@ else:
     )
     st.markdown("<hr style='margin-top: 0px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
-    # ----------------------------------------
-    # 新規入力画面
-    # ----------------------------------------
     if selected_tab == "新規入力":
         today_date = datetime.now(JST).date()
         is_sat_today = (today_date.weekday() == 5)
@@ -970,9 +940,6 @@ else:
                                 del st.session_state[k]
                         st.rerun()
 
-    # ----------------------------------------
-    # 管理者のみの画面
-    # ----------------------------------------
     if st.session_state.role in ["管理者", "開発管理者"]:
         
         if selected_tab == "個人・複数日入力":
@@ -1477,7 +1444,6 @@ else:
                         st.warning('指定された期間に記録がありません')
                     else:
                         col_config = {
-                            "名前": st.column_config.SelectboxColumn("名前", options=client_names),
                             "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
                             "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×", "学校", "自宅", "なし"]),
                             "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×", "自宅", "なし"]),
@@ -1501,66 +1467,52 @@ else:
                             col_config["検温"] = st.column_config.NumberColumn("検温", min_value=34.0, max_value=43.0, step=0.1, format="%.1f")
                             col_config["排泄"] = st.column_config.SelectboxColumn("排泄", options=["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"])
 
-                        edited_df = st.data_editor(
-                            st.session_state.edit_cache,
+                        display_df = st.session_state.edit_cache.set_index(['記載日', '名前'])
+
+                        edited_display_df = st.data_editor(
+                            display_df,
                             column_config=col_config,
                             num_rows="dynamic", use_container_width=True, key="data_editor"
                         )
                         
-                        changed_by_system = False
-                        original_df = st.session_state.edit_original
-                        
-                        for idx in edited_df.index:
-                            current_status = edited_df.at[idx, '出欠状況']
-                            cached_status = st.session_state.edit_cache.at[idx, '出欠状況'] if idx in st.session_state.edit_cache.index else ""
-                            
-                            cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
-                            if is_child_service:
-                                cols_to_clear.extend(['おやつ提供', 'おやつ量', '検温', '排泄'])
-
-                            if current_status == '欠席':
-                                for col in cols_to_clear:
-                                    if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
-                                        edited_df.at[idx, col] = ''
-                                        changed_by_system = True
-                            
-                            elif cached_status == '欠席' and current_status != '欠席':
-                                for col in cols_to_clear:
-                                    if idx in original_df.index:
-                                        orig_val = original_df.at[idx, col]
-                                        if pd.notna(orig_val) and col in edited_df.columns:
-                                            edited_df.at[idx, col] = orig_val
-                                            changed_by_system = True
-                            
-                            if current_status != '欠席':
-                                cur_st = str(edited_df.at[idx, '開始時間']).strip() if '開始時間' in edited_df.columns else ""
-                                cur_et = str(edited_df.at[idx, '終了時間']).strip() if '終了時間' in edited_df.columns else ""
-                                cur_nst = str(edited_df.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in edited_df.columns else ""
-                                cur_net = str(edited_df.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in edited_df.columns else ""
-                                
-                                cached_st = str(st.session_state.edit_cache.at[idx, '開始時間']).strip() if idx in st.session_state.edit_cache.index and '開始時間' in st.session_state.edit_cache.columns else ""
-                                cached_et = str(st.session_state.edit_cache.at[idx, '終了時間']).strip() if idx in st.session_state.edit_cache.index and '終了時間' in st.session_state.edit_cache.columns else ""
-                                cached_nst = str(st.session_state.edit_cache.at[idx, '中抜け開始時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け開始時刻' in st.session_state.edit_cache.columns else ""
-                                cached_net = str(st.session_state.edit_cache.at[idx, '中抜け終了時刻']).strip() if idx in st.session_state.edit_cache.index and '中抜け終了時刻' in st.session_state.edit_cache.columns else ""
-                                
-                                if (cur_st != cached_st or cur_et != cached_et or 
-                                    cur_nst != cached_nst or cur_net != cached_net):
-                                    new_calc = calc_working_hours(cur_st, cur_et, cur_nst, cur_net)
-                                    if str(edited_df.at[idx, '算定時間数']).strip() != new_calc:
-                                        edited_df.at[idx, '算定時間数'] = new_calc
-                                        changed_by_system = True
-                        
-                        if changed_by_system:
-                            st.session_state.edit_cache = edited_df.copy()
-                            if 'data_editor' in st.session_state:
-                                del st.session_state['data_editor']
-                            st.rerun()
+                        edited_df = edited_display_df.reset_index()
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
                         
                         if save_btn:
                             status_placeholder_edit.markdown(SPINNER_HTML, unsafe_allow_html=True)
+                            
+                            original_df = st.session_state.edit_original
+                            
+                            for idx in edited_df.index:
+                                current_status = edited_df.at[idx, '出欠状況']
+                                cached_status = original_df.at[idx, '出欠状況'] if idx in original_df.index else ""
+                                
+                                cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
+                                if is_child_service:
+                                    cols_to_clear.extend(['おやつ提供', 'おやつ量', '検温', '排泄'])
+
+                                if current_status == '欠席':
+                                    for col in cols_to_clear:
+                                        if col in edited_df.columns and pd.notna(edited_df.at[idx, col]) and str(edited_df.at[idx, col]).strip() != '':
+                                            edited_df.at[idx, col] = ''
+                                
+                                elif cached_status == '欠席' and current_status != '欠席':
+                                    for col in cols_to_clear:
+                                        if idx in original_df.index:
+                                            orig_val = original_df.at[idx, col]
+                                            if pd.notna(orig_val) and col in edited_df.columns:
+                                                edited_df.at[idx, col] = orig_val
+                                
+                                if current_status != '欠席':
+                                    cur_st = str(edited_df.at[idx, '開始時間']).strip() if '開始時間' in edited_df.columns else ""
+                                    cur_et = str(edited_df.at[idx, '終了時間']).strip() if '終了時間' in edited_df.columns else ""
+                                    cur_nst = str(edited_df.at[idx, '中抜け開始時刻']).strip() if '中抜け開始時刻' in edited_df.columns else ""
+                                    cur_net = str(edited_df.at[idx, '中抜け終了時刻']).strip() if '中抜け終了時刻' in edited_df.columns else ""
+                                    
+                                    new_calc = calc_working_hours(cur_st, cur_et, cur_nst, cur_net)
+                                    edited_df.at[idx, '算定時間数'] = new_calc
                             
                             record_df = st.session_state.full_record_df.copy()
                             
