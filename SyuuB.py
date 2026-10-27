@@ -11,6 +11,7 @@ import socket
 import qrcode
 from io import BytesIO
 import jpholiday
+from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
 
 # 日本時間（JST）の定義
 JST = timezone(timedelta(hours=+9), 'JST')
@@ -1435,83 +1436,84 @@ else:
                     st.session_state.edit_last_start = start_date
                     st.session_state.edit_last_end = end_date
                     st.session_state.edit_need_reload = False
-                    
-                    if 'data_editor' in st.session_state:
-                        del st.session_state['data_editor']
 
                 if st.session_state.get('edit_cache') is not None:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
                         # -------------------------------------------------------------
-                        # 工夫案の実装: インデックスを結合し、Pandas Styler で装飾を行う
+                        # streamlit-aggrid を用いた表の設定
                         # -------------------------------------------------------------
-                        display_df = st.session_state.edit_cache.copy()
+                        gb = GridOptionsBuilder.from_dataframe(st.session_state.edit_cache)
                         
-                        # ② 左側固定のための工夫 (エラー回避のため、1つの列として結合してからインデックス化)
-                        display_df['固定表示(日付・名前)'] = display_df['記載日'] + " \n " + display_df['名前']
-                        display_df = display_df.set_index('固定表示(日付・名前)')
+                        gb.configure_default_column(editable=True)
                         
-                        # ③、④ ゼブラ柄と罫線のスタイルを適用する関数
-                        def apply_custom_style(df):
-                            styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                            prev_date = None
+                        # ② 列の固定（左側）
+                        gb.configure_column("記載日", pinned='left', width=110)
+                        gb.configure_column("名前", pinned='left', width=110)
+                        
+                        # ③ ゼブラ柄、④ 日付の区切り線（JavaScriptを使用してスタイル制御）
+                        jscode = JsCode("""
+                        function(params) {
+                            var style = {};
+                            // ③ ゼブラ柄（偶数行を薄い緑色に）
+                            if (params.node.rowIndex % 2 === 0) {
+                                style['backgroundColor'] = '#d4edda';
+                            } else {
+                                style['backgroundColor'] = '#ffffff';
+                            }
                             
-                            for i, (idx, row) in enumerate(df.iterrows()):
-                                curr_date = row['記載日']
-                                
-                                # ③ ゼブラ柄 (奇数行・偶数行で背景色を交互に変更)
-                                bg = 'background-color: #f4f6f9;' if i % 2 == 0 else 'background-color: #ffffff;'
-                                
-                                # ④ 日付の区切り (日付が変わる行の上部に青い罫線を設定)
-                                border = ''
-                                if prev_date is not None and curr_date != prev_date:
-                                    border = 'border-top: 2px solid #1976d2;'
-                                
-                                for col in df.columns:
-                                    styles.at[idx, col] = f"{bg} {border}"
-                                
-                                prev_date = curr_date
-                            return styles
-
-                        # スタイルをデータフレームに適用
-                        styled_df = display_df.style.apply(apply_custom_style, axis=None)
-
-                        col_config = {
-                            "記載日": None, # 結合インデックスで表示するため個別の列は隠す
-                            "名前": None,   # 結合インデックスで表示するため個別の列は隠す
-                            "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
-                            "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×", "学校", "自宅", "なし"]),
-                            "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×", "自宅", "なし"]),
-                            "食事提供": st.column_config.SelectboxColumn("食事提供", options=["〇", "×"]),
-                            "食事量": st.column_config.NumberColumn("食事量", min_value=0, max_value=10, step=1),
-                            "体調": st.column_config.SelectboxColumn("体調", options=cond_opts),
-                            eng_label: st.column_config.SelectboxColumn(eng_label, options=eng_opts),
-                            men_label: st.column_config.SelectboxColumn(men_label, options=men_opts),
-                            "特別な支援": st.column_config.SelectboxColumn("特別な支援", options=sup_opts),
-                            "遅刻・早退": st.column_config.SelectboxColumn("遅刻・早退", options=["〇", ""]),
-                            "計画": st.column_config.SelectboxColumn("計画", options=["計画あり", "計画なし", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
-                            "都合": st.column_config.SelectboxColumn("都合", options=["利用者都合", "事業所都合", ""]) if st.session_state.service_type == "生活介護" or is_child_service else None,
-                            "計画開始時刻": st.column_config.TextColumn("計画開始時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
-                            "計画終了時刻": st.column_config.TextColumn("計画終了時刻") if st.session_state.service_type == "生活介護" or is_child_service else None,
-                            "中抜け開始時刻": st.column_config.TextColumn("中抜け開始時刻"),
-                            "中抜け終了時刻": st.column_config.TextColumn("中抜け終了時刻"),
+                            // ④ 日付が変わった行の上に青い罫線を入れる
+                            if (params.node.rowIndex > 0) {
+                                var prevNode = params.api.getDisplayedRowAtIndex(params.node.rowIndex - 1);
+                                if (prevNode) {
+                                    var prevDate = params.api.getValue('記載日', prevNode);
+                                    var currDate = params.node.data['記載日'];
+                                    if (currDate !== prevDate) {
+                                        style['borderTop'] = '2px solid #2196F3';
+                                    }
+                                }
+                            }
+                            return style;
                         }
+                        """)
+                        gb.configure_grid_options(getRowStyle=jscode)
+                        
+                        # プルダウン（セレクトボックス）の設定
+                        gb.configure_column("出欠状況", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["出席", "遅刻・早退", "中抜け", "欠席"]})
+                        gb.configure_column("送迎往路", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×", "学校", "自宅", "なし"]})
+                        gb.configure_column("送迎復路", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×", "自宅", "なし"]})
+                        gb.configure_column("食事提供", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×"]})
+                        gb.configure_column("体調", cellEditor='agSelectCellEditor', cellEditorParams={'values': cond_opts})
+                        gb.configure_column(eng_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': eng_opts})
+                        gb.configure_column(men_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': men_opts})
+                        gb.configure_column("特別な支援", cellEditor='agSelectCellEditor', cellEditorParams={'values': sup_opts})
+                        gb.configure_column("遅刻・早退", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]})
+                        
+                        if st.session_state.service_type == "生活介護" or is_child_service:
+                            gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]})
+                            gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]})
+                            
                         if is_child_service:
-                            col_config["おやつ提供"] = st.column_config.SelectboxColumn("おやつ提供", options=["〇", "×"])
-                            col_config["おやつ量"] = st.column_config.SelectboxColumn("おやつ量", options=["完食", "半分", "一口", "食べず"])
-                            col_config["検温"] = st.column_config.NumberColumn("検温", min_value=34.0, max_value=43.0, step=0.1, format="%.1f")
-                            col_config["排泄"] = st.column_config.SelectboxColumn("排泄", options=["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"])
+                            gb.configure_column("おやつ提供", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", "×"]})
+                            gb.configure_column("おやつ量", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["完食", "半分", "一口", "食べず"]})
+                            gb.configure_column("排泄", cellEditor='agSelectCellEditor', cellEditorParams={'values': exc_opts})
 
-                        edited_display_df = st.data_editor(
-                            styled_df, # 装飾した表データを渡す
-                            column_config=col_config,
-                            use_container_width=True, 
-                            key="data_editor"
+                        gridOptions = gb.build()
+                        
+                        # ① 編集時にスクロールが飛ばないようAgGridの内部状態を利用
+                        response = AgGrid(
+                            st.session_state.edit_cache,
+                            gridOptions=gridOptions,
+                            update_mode=GridUpdateMode.MODEL_CHANGED,
+                            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                            fit_columns_on_grid_load=False,
+                            theme='balham', # よりExcelに近い高密度のテーマ
+                            allow_unsafe_jscode=True # カスタムデザイン（ゼブラ柄等）を適用するために必須
                         )
                         
-                        # 編集後の表からインデックスを捨てて元の形式に戻す
-                        edited_df = edited_display_df.reset_index(drop=True)
+                        # 編集後のデータフレームを取得
+                        edited_df = pd.DataFrame(response['data'])
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
