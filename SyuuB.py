@@ -1443,7 +1443,43 @@ else:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
+                        # -------------------------------------------------------------
+                        # 工夫案の実装: インデックスを結合し、Pandas Styler で装飾を行う
+                        # -------------------------------------------------------------
+                        display_df = st.session_state.edit_cache.copy()
+                        
+                        # ② 左側固定のための工夫 (エラー回避のため、1つの列として結合してからインデックス化)
+                        display_df['固定表示(日付・名前)'] = display_df['記載日'] + " \n " + display_df['名前']
+                        display_df = display_df.set_index('固定表示(日付・名前)')
+                        
+                        # ③、④ ゼブラ柄と罫線のスタイルを適用する関数
+                        def apply_custom_style(df):
+                            styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                            prev_date = None
+                            
+                            for i, (idx, row) in enumerate(df.iterrows()):
+                                curr_date = row['記載日']
+                                
+                                # ③ ゼブラ柄 (奇数行・偶数行で背景色を交互に変更)
+                                bg = 'background-color: #f4f6f9;' if i % 2 == 0 else 'background-color: #ffffff;'
+                                
+                                # ④ 日付の区切り (日付が変わる行の上部に青い罫線を設定)
+                                border = ''
+                                if prev_date is not None and curr_date != prev_date:
+                                    border = 'border-top: 2px solid #1976d2;'
+                                
+                                for col in df.columns:
+                                    styles.at[idx, col] = f"{bg} {border}"
+                                
+                                prev_date = curr_date
+                            return styles
+
+                        # スタイルをデータフレームに適用
+                        styled_df = display_df.style.apply(apply_custom_style, axis=None)
+
                         col_config = {
+                            "記載日": None, # 結合インデックスで表示するため個別の列は隠す
+                            "名前": None,   # 結合インデックスで表示するため個別の列は隠す
                             "出欠状況": st.column_config.SelectboxColumn("出欠状況", options=["出席", "遅刻・早退", "中抜け", "欠席"]),
                             "送迎往路": st.column_config.SelectboxColumn("送迎往路", options=["〇", "×", "学校", "自宅", "なし"]),
                             "送迎復路": st.column_config.SelectboxColumn("送迎復路", options=["〇", "×", "自宅", "なし"]),
@@ -1467,13 +1503,15 @@ else:
                             col_config["検温"] = st.column_config.NumberColumn("検温", min_value=34.0, max_value=43.0, step=0.1, format="%.1f")
                             col_config["排泄"] = st.column_config.SelectboxColumn("排泄", options=["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"])
 
-                        edited_df = st.data_editor(
-                            st.session_state.edit_cache,
+                        edited_display_df = st.data_editor(
+                            styled_df, # 装飾した表データを渡す
                             column_config=col_config,
                             use_container_width=True, 
-                            hide_index=True,
                             key="data_editor"
                         )
+                        
+                        # 編集後の表からインデックスを捨てて元の形式に戻す
+                        edited_df = edited_display_df.reset_index(drop=True)
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
