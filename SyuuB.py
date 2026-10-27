@@ -1467,15 +1467,13 @@ else:
                             col_config["検温"] = st.column_config.NumberColumn("検温", min_value=34.0, max_value=43.0, step=0.1, format="%.1f")
                             col_config["排泄"] = st.column_config.SelectboxColumn("排泄", options=["自立", "声かけ", "一部介助", "全介助", "失敗", "その他"])
 
-                        display_df = st.session_state.edit_cache.set_index(['記載日', '名前'])
-
-                        edited_display_df = st.data_editor(
-                            display_df,
+                        edited_df = st.data_editor(
+                            st.session_state.edit_cache,
                             column_config=col_config,
-                            use_container_width=True, key="data_editor"
+                            use_container_width=True, 
+                            hide_index=True,
+                            key="data_editor"
                         )
-                        
-                        edited_df = edited_display_df.reset_index()
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
