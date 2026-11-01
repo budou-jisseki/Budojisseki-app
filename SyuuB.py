@@ -11,6 +11,7 @@ import socket
 import qrcode
 from io import BytesIO
 import jpholiday
+import calendar
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
 
 # 日本時間（JST）の定義
@@ -607,6 +608,22 @@ def on_b_full_attendance_change():
         st.session_state.b_meal = "〇"
         if "b_snack" in st.session_state: st.session_state.b_snack = "〇"
 
+# === ショートカットボタン用のコールバック関数 ===
+def set_date_range(key_name, mode):
+    today = datetime.now(JST).date()
+    if mode == "today":
+        st.session_state[key_name] = (today, today)
+    elif mode == "week":
+        st_w = today - timedelta(days=today.weekday())
+        st.session_state[key_name] = (st_w, st_w + timedelta(days=6))
+    elif mode == "month":
+        l_day = calendar.monthrange(today.year, today.month)[1]
+        st.session_state[key_name] = (today.replace(day=1), today.replace(day=l_day))
+    elif mode == "last_month":
+        first_this = today.replace(day=1)
+        last_last = first_this - timedelta(days=1)
+        st.session_state[key_name] = (last_last.replace(day=1), last_last)
+
 app_title = f"{st.session_state.service_type} 実績入力" if st.session_state.logged_in else "実績入力システム"
 st.markdown(f'<h1 class="main-title">{app_title}</h1>', unsafe_allow_html=True)
 
@@ -950,13 +967,17 @@ else:
             if 'b_snack' not in st.session_state: st.session_state.b_snack = "〇"
 
             st.write("### 一括登録する内容を設定してください")
+            
+            if 'date_batch' not in st.session_state:
+                st.session_state.date_batch = (datetime.now(JST).date(), datetime.now(JST).date())
+                
             st.markdown("<div style='font-size: 0.9rem; font-weight: bold; color: #333; margin-bottom: 5px;'>対象期間</div>", unsafe_allow_html=True)
-            col_bd1, col_bd2 = st.columns(2)
-            with col_bd1:
-                start_date_batch = st.date_input('開始日', value=datetime.now(JST).date(), key="start_date_batch")
-            with col_bd2:
-                end_date_batch = st.date_input('終了日', value=datetime.now(JST).date(), key="end_date_batch")
-            batch_dates = (start_date_batch, end_date_batch)
+            col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+            col_b1.button("今日", key="btn_b_today", use_container_width=True, on_click=set_date_range, args=("date_batch", "today"))
+            col_b2.button("今週", key="btn_b_week", use_container_width=True, on_click=set_date_range, args=("date_batch", "week"))
+            col_b3.button("今月", key="btn_b_month", use_container_width=True, on_click=set_date_range, args=("date_batch", "month"))
+            col_b4.button("先月", key="btn_b_lmonth", use_container_width=True, on_click=set_date_range, args=("date_batch", "last_month"))
+            batch_dates = st.date_input('カレンダーから選択', key="date_batch", label_visibility="collapsed")
             
             col_ex1, col_ex2 = st.columns(2)
             exc_1_checked = False
@@ -985,7 +1006,7 @@ else:
                 b_planned_absence = st.checkbox("本来の利用計画あり（欠席時対応加算等）", key="b_plan_ab")
                 
                 if b_planned_absence:
-                    target_date = start_date_batch
+                    target_date = batch_dates[0] if isinstance(batch_dates, tuple) and len(batch_dates) > 0 else batch_dates
                     b_count = check_absence_addition_count(g_client, current_sheet_name, b_client_name, target_date, current_columns)
                     if b_count >= 4:
                         st.error(f"⚠️ 【警告】{b_client_name}さんの{target_date.month}月の「欠席時対応加算」は既に {b_count} 回記録されています。月4回の上限を超過します。")
@@ -1100,8 +1121,8 @@ else:
             submit_batch = st.button(label='一括登録する', use_container_width=True, type='primary', key='submit_batch')
             
             if submit_batch:
-                if start_date_batch > end_date_batch:
-                    st.warning('開始日は終了日以前の日付を選択してください')
+                if len(batch_dates) != 2:
+                    st.warning('開始日と終了日の両方を選択してください')
                 else:
                     start_date, end_date = batch_dates
                     if start_date.year != end_date.year or start_date.month != end_date.month:
@@ -1233,13 +1254,17 @@ else:
 
         if selected_tab == "全員一括入力":
             st.write("### 全員一括登録する内容を設定してください")
+            
+            if 'date_all' not in st.session_state:
+                st.session_state.date_all = (datetime.now(JST).date(), datetime.now(JST).date())
+                
             st.markdown("<div style='font-size: 0.9rem; font-weight: bold; color: #333; margin-bottom: 5px;'>対象期間</div>", unsafe_allow_html=True)
-            col_ad1, col_ad2 = st.columns(2)
-            with col_ad1:
-                start_date_all = st.date_input('開始日', value=datetime.now(JST).date(), key="start_date_all")
-            with col_ad2:
-                end_date_all = st.date_input('終了日', value=datetime.now(JST).date(), key="end_date_all")
-            batch_dates_all = (start_date_all, end_date_all)
+            col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+            col_a1.button("今日", key="btn_a_today", use_container_width=True, on_click=set_date_range, args=("date_all", "today"))
+            col_a2.button("今週", key="btn_a_week", use_container_width=True, on_click=set_date_range, args=("date_all", "week"))
+            col_a3.button("今月", key="btn_a_month", use_container_width=True, on_click=set_date_range, args=("date_all", "month"))
+            col_a4.button("先月", key="btn_a_lmonth", use_container_width=True, on_click=set_date_range, args=("date_all", "last_month"))
+            batch_dates_all = st.date_input('カレンダーから選択', key="date_all", label_visibility="collapsed")
             
             col_ex1_all, col_ex2_all = st.columns(2)
             exc_1_all_checked = False
@@ -1320,8 +1345,8 @@ else:
             if submit_all:
                 if not valid_clients:
                     st.warning('登録対象となる利用者がいません')
-                elif start_date_all > end_date_all:
-                    st.warning('開始日は終了日以前の日付を選択してください')
+                elif len(batch_dates_all) != 2:
+                    st.warning('開始日と終了日の両方を選択してください')
                 else:
                     start_date, end_date = batch_dates_all
                     if start_date.year != end_date.year or start_date.month != end_date.month:
@@ -1412,19 +1437,18 @@ else:
                                     st.rerun()
 
         if selected_tab == "過去の記録を編集":
-            today = datetime.now(JST).date()
+            if 'edit_dates' not in st.session_state:
+                st.session_state.edit_dates = (datetime.now(JST).date(), datetime.now(JST).date())
+
             st.markdown("<div style='font-size: 0.9rem; font-weight: bold; color: #333; margin-bottom: 5px;'>カレンダーから編集する期間</div>", unsafe_allow_html=True)
-            col_ed1, col_ed2 = st.columns(2)
-            with col_ed1:
-                start_date_edit = st.date_input('開始日', value=today, key='start_date_edit')
-            with col_ed2:
-                end_date_edit = st.date_input('終了日', value=today, key='end_date_edit')
+            col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+            col_e1.button("今日", key="btn_e_today", use_container_width=True, on_click=set_date_range, args=("edit_dates", "today"))
+            col_e2.button("今週", key="btn_e_week", use_container_width=True, on_click=set_date_range, args=("edit_dates", "week"))
+            col_e3.button("今月", key="btn_e_month", use_container_width=True, on_click=set_date_range, args=("edit_dates", "month"))
+            col_e4.button("先月", key="btn_e_lmonth", use_container_width=True, on_click=set_date_range, args=("edit_dates", "last_month"))
+            edit_dates = st.date_input('カレンダーから選択', key='edit_dates', label_visibility="collapsed")
             
-            edit_dates = (start_date_edit, end_date_edit)
-            
-            if start_date_edit > end_date_edit:
-                st.warning('開始日は終了日以前の日付を選択してください')
-            else:
+            if len(edit_dates) == 2:
                 start_date, end_date = edit_dates
                 
                 if ('edit_last_start' not in st.session_state or 
@@ -1604,3 +1628,6 @@ else:
                                 st.session_state.success_msg = '記録をスプレッドシートに更新しました'
                                 st.session_state.edit_need_reload = True
                                 st.rerun()
+
+            elif len(edit_dates) == 1:
+                st.warning('終了日もカレンダーから選択してください')
