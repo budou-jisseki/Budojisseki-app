@@ -390,7 +390,7 @@ def load_init_settings():
     return settings
 
 def calc_working_hours(start_str, end_str, n_start_str="", n_end_str=""):
-    if not start_str or not end_str:
+    if not start_str or not end_str or str(start_str) == 'None' or str(end_str) == 'None' or str(start_str).lower() == 'nan' or str(end_str).lower() == 'nan':
         return ""
     try:
         start_dt = datetime.strptime(start_str, "%H:%M")
@@ -399,7 +399,7 @@ def calc_working_hours(start_str, end_str, n_start_str="", n_end_str=""):
         diff_min = (end_dt - start_dt).total_seconds() / 60
         
         nakanuke_min = 0
-        if n_start_str and n_end_str:
+        if n_start_str and n_end_str and str(n_start_str) != 'None' and str(n_end_str) != 'None':
             try:
                 n_st_dt = datetime.strptime(n_start_str, "%H:%M")
                 n_et_dt = datetime.strptime(n_end_str, "%H:%M")
@@ -1470,8 +1470,8 @@ else:
                         
                         target_records = record_df[mask].copy()
                         
-                        st.session_state.edit_cache = target_records[current_columns].copy()
-                        st.session_state.edit_original = target_records[current_columns].copy()
+                        st.session_state.edit_cache = target_records[current_columns].copy().reset_index(drop=True)
+                        st.session_state.edit_original = target_records[current_columns].copy().reset_index(drop=True)
                         st.session_state.full_record_df = record_df.copy()
                     else:
                         st.session_state.edit_cache = pd.DataFrame(columns=current_columns)
@@ -1486,6 +1486,7 @@ else:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
+                        st.warning("⚠️ **【重要】** 表のデータを直接書き換えた後は、**必ずEnterキーを押すか、表の外をクリックして入力を確定させてから**、下の「保存する」ボタンを押してください。（編集中にボタンを押すと保存がキャンセルされる現象を防ぐため）")
                         gb = GridOptionsBuilder.from_dataframe(st.session_state.edit_cache)
                         
                         gb.configure_default_column(
@@ -1550,7 +1551,24 @@ else:
                             return style;
                         }
                         """)
-                        gb.configure_grid_options(getRowStyle=jscode)
+                        
+                        jscode_on_change = JsCode(f"""
+                        function(params) {{
+                            if (params.colDef.field === "出欠状況" && params.newValue === "欠席") {{
+                                var cols = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '{eng_label}', '{men_label}', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻'];
+                                var is_child = {'true' if is_child_service else 'false'};
+                                if (is_child) {{
+                                    cols.push('おやつ提供', 'おやつ量', '検温', '排泄');
+                                }}
+                                cols.forEach(function(col) {{
+                                    if (params.node.data.hasOwnProperty(col)) {{
+                                        params.node.setDataValue(col, '');
+                                    }}
+                                }});
+                            }}
+                        }}
+                        """)
+                        gb.configure_grid_options(getRowStyle=jscode, onCellValueChanged=jscode_on_change)
                         
                         gridOptions = gb.build()
                         
@@ -1567,6 +1585,8 @@ else:
                         )
                         
                         edited_df = pd.DataFrame(response['data'])
+                        edited_df = edited_df.replace({'None': '', None: '', 'nan': ''})
+                        edited_df = edited_df.fillna('')
                         
                         status_placeholder_edit = st.empty()
                         save_btn = st.button('変更を保存する', type='primary')
