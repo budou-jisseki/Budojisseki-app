@@ -902,7 +902,7 @@ else:
                         '名前': client_name, 
                         '受給者証番号': recipient_num, 
                         '出欠状況': attendance_status,
-                        '开始時間': "" if is_all_absent else input_start, 
+                        '開始時間': "" if is_all_absent else input_start, 
                         '終了時間': "" if is_all_absent else input_end, 
                         '算定時間数': calc_time,
                         '送迎往路': "" if is_all_absent else transport_out, 
@@ -1181,7 +1181,7 @@ else:
                                         '名前': b_client_name,
                                         '受給者証番号': b_recipient_num,
                                         '出欠状況': b_attendance,
-                                        '开始時間': "" if is_b_all_absent else current_start,
+                                        '開始時間': "" if is_b_all_absent else current_start,
                                         '終了時間': "" if is_b_all_absent else current_end,
                                         '算定時間数': current_calc_time,
                                         '送迎往路': "" if is_b_all_absent else b_transport_out,
@@ -1258,9 +1258,9 @@ else:
 
             col_allt1, col_allt2 = st.columns(2)
             with col_allt1:
-                all_transport_out = radio("送迎往路", to_opts, horizontal=True, key='all_to')
+                all_transport_out = st.radio("送迎往路", to_opts, horizontal=True, key='all_to')
             with col_allt2:
-                all_transport_ret = radio("送迎復路", tr_opts, horizontal=True, key='all_tr')
+                all_transport_ret = st.radio("送迎復路", tr_opts, horizontal=True, key='all_tr')
 
             all_meal_provided = st.radio("食事提供", ["〇", "×"], horizontal=True, key='all_meal')
             all_meal_amount_val = ""
@@ -1441,20 +1441,15 @@ else:
                     if st.session_state.edit_cache.empty:
                         st.warning('指定された期間に記録がありません')
                     else:
-                        # -------------------------------------------------------------
-                        # streamlit-aggrid を用いた表の設定
-                        # -------------------------------------------------------------
                         gb = GridOptionsBuilder.from_dataframe(st.session_state.edit_cache)
                         
-                        # --- 列のデフォルト設定（リサイズ可能、自動縮小防止） ---
                         gb.configure_default_column(
                             editable=True, 
                             resizable=True,
                             minWidth=100,
-                            suppressSizeToFit=True # 自動的に幅を詰めるのを防ぐ
+                            suppressSizeToFit=True
                         )
                         
-                        # --- 各列の個別幅設定 ---
                         gb.configure_column("記載日", pinned='left', width=120)
                         gb.configure_column("名前", pinned='left', width=120)
                         gb.configure_column("受給者証番号", width=120)
@@ -1488,18 +1483,15 @@ else:
                             gb.configure_column("検温", width=90)
                             gb.configure_column("排泄", cellEditor='agSelectCellEditor', cellEditorParams={'values': exc_opts}, width=110)
 
-                        # ③ ゼブラ柄、④ 日付の区切り線（JavaScriptを使用してスタイル制御）
                         jscode = JsCode("""
                         function(params) {
                             var style = {};
-                            // ③ ゼブラ柄（偶数行を薄い緑色に）
                             if (params.node.rowIndex % 2 === 0) {
                                 style['backgroundColor'] = '#d4edda';
                             } else {
                                 style['backgroundColor'] = '#ffffff';
                             }
                             
-                            // ④ 日付が変わった行の上に青い罫線を入れる
                             if (params.node.rowIndex > 0) {
                                 var prevNode = params.api.getDisplayedRowAtIndex(params.node.rowIndex - 1);
                                 if (prevNode && prevNode.data) {
@@ -1517,20 +1509,18 @@ else:
                         
                         gridOptions = gb.build()
                         
-                        # ① 編集時にスクロールが飛ばないようAgGridの内部状態を利用
                         response = AgGrid(
                             st.session_state.edit_cache,
                             gridOptions=gridOptions,
-                            update_mode=GridUpdateMode.VALUE_CHANGED, # 変更時のみデータを送信
+                            update_mode=GridUpdateMode.VALUE_CHANGED,
                             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
                             fit_columns_on_grid_load=False,
-                            theme='balham', # よりExcelに近い高密度のテーマ
-                            allow_unsafe_jscode=True, # カスタムデザイン（ゼブラ柄等）を適用するために必須
-                            reload_data=False, # 表全体の再描画を抑止してスクロール位置を維持
-                            key='edit_grid' # 一意のキーでコンポーネントを固定
+                            theme='balham',
+                            allow_unsafe_jscode=True,
+                            reload_data=False,
+                            key='edit_grid'
                         )
                         
-                        # 編集後のデータフレームを取得
                         edited_df = pd.DataFrame(response['data'])
                         
                         status_placeholder_edit = st.empty()
