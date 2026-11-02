@@ -682,6 +682,8 @@ else:
             st.markdown(f"<div style='font-size: 0.8rem; color: #666; margin-top: -10px;'>最終アクセス: {st.session_state.last_access_display}</div>", unsafe_allow_html=True)
     with col2:
         if st.button('更新', use_container_width=True):
+            st.session_state.edit_need_reload = True
+            st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
             st.rerun()
     with col3:
         if st.button("退出", use_container_width=True):
@@ -1572,6 +1574,7 @@ else:
                         
                         gridOptions = gb.build()
                         
+                        grid_key_val = st.session_state.get('grid_key', 0)
                         response = AgGrid(
                             st.session_state.edit_cache,
                             gridOptions=gridOptions,
@@ -1581,7 +1584,7 @@ else:
                             theme='balham',
                             allow_unsafe_jscode=True,
                             reload_data=False,
-                            key='edit_grid'
+                            key=f'edit_grid_{grid_key_val}'
                         )
                         
                         edited_df = pd.DataFrame(response['data'])
@@ -1647,6 +1650,7 @@ else:
                                 write_system_log(g_client, "データ編集保存", "-", len(edited_df))
                                 st.session_state.success_msg = '記録をスプレッドシートに更新しました'
                                 st.session_state.edit_need_reload = True
+                                st.session_state.grid_key = st.session_state.get('grid_key', 0) + 1
                                 st.rerun()
 
             elif len(edit_dates) == 1:
