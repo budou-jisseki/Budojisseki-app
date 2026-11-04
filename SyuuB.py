@@ -1,8 +1,8 @@
 ﻿# ==========================================
 # System: SyuuB.py (本番稼働用)
-# Version: 1.2.0
+# Version: 1.2.1
 # Last Update: 2026-11-04
-# Notes: 生活介護の遅刻早退・中抜け・計画性の記録対応、編集画面の選択肢化
+# Notes: キャッシュ対策のVer表示追加、計画表示の制限解除
 # ==========================================
 import json
 import streamlit as st
@@ -19,6 +19,8 @@ from io import BytesIO
 import jpholiday
 import calendar
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
+
+APP_VERSION = "1.2.1"
 
 # 日本時間（JST）の定義
 JST = timezone(timedelta(hours=+9), 'JST')
@@ -150,7 +152,7 @@ else:
     exc_opts = []
 
 # ==========================================
-# デザイン・UIカスタマイズ
+# デザイン・UIカスタマイズ・バージョン表示
 # ==========================================
 st.markdown(f"""
 <style>
@@ -202,6 +204,20 @@ st.markdown(f"""
         gap: 10px;
     }}
 
+    .version-label {{
+        position: fixed;
+        top: 15px;
+        right: 15px;
+        background-color: {accent_color};
+        color: white;
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        z-index: 99999;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }}
+
     @media (max-width: 768px) {{
         .block-container {{
             max-width: 100vw !important; 
@@ -214,6 +230,7 @@ st.markdown(f"""
         div[data-testid="stDataFrame"] {{ overflow-x: auto !important; width: 100% !important; }}
     }}
 </style>
+<div class="version-label">Ver {APP_VERSION}</div>
 """, unsafe_allow_html=True)
 
 # ==========================================
@@ -787,22 +804,18 @@ else:
         plan_start = ""
         plan_end = ""
         if is_tardy_early:
-            if st.session_state.service_type == "生活介護" or is_child_service:
-                st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
-                col_t1, col_t2 = st.columns(2)
-                with col_t1:
-                    tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="t_plan_new")
-                with col_t2:
-                    tardy_reason = st.radio("都合", ["利用者都合", "事業所都合"], horizontal=True, key="t_rsn_new")
-                
-                if tardy_planned == "計画あり":
-                    col_ps, col_pe = st.columns(2)
-                    with col_ps:
-                        plan_start = st.text_input("計画開始時刻 (HH:MM)", key="p_st_new")
-                    with col_pe:
-                        plan_end = st.text_input("計画終了時刻 (HH:MM)", key="p_et_new")
-            else:
-                st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="t_plan_new")
+            with col_t2:
+                tardy_reason = st.radio("都合", ["利用者都合", "事業所都合"], horizontal=True, key="t_rsn_new")
+            
+            if tardy_planned == "計画あり":
+                col_ps, col_pe = st.columns(2)
+                with col_ps:
+                    plan_start = st.text_input("計画開始時刻 (HH:MM)", key="p_st_new")
+                with col_pe:
+                    plan_end = st.text_input("計画終了時刻 (HH:MM)", key="p_et_new")
 
         st.write("### 中抜け")
         is_nakanuke = st.checkbox("中抜け", key="nakanuke_new", disabled=is_all_absent)
@@ -811,20 +824,17 @@ else:
         nakanuke_start = ""
         nakanuke_end = ""
         if is_nakanuke:
-            if st.session_state.service_type == "生活介護" or is_child_service:
-                col_n1, col_n2 = st.columns(2)
-                with col_n1:
-                    nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="n_plan_new")
-                with col_n2:
-                    nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="n_rsn_new")
+            col_n1, col_n2 = st.columns(2)
+            with col_n1:
+                nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="n_plan_new")
+            with col_n2:
+                nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="n_rsn_new")
             
             col_ns, col_ne = st.columns(2)
             with col_ns:
                 nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="n_st_new")
             with col_ne:
                 nakanuke_end = st.text_input("中抜け終了時刻 (HH:MM)", key="n_et_new")
-            
-            st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
 
         st.write("### サービス提供状況")
         if is_tardy_early or is_nakanuke:
@@ -1046,22 +1056,18 @@ else:
             b_plan_start = ""
             b_plan_end = ""
             if b_is_tardy_early:
-                if st.session_state.service_type == "生活介護" or is_child_service:
-                    st.warning("⚠️ 遅刻・早退の時刻を「特記事項」欄に記入してください")
-                    col_btardy1, col_btardy2 = st.columns(2)
-                    with col_btardy1:
-                        b_tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_t_plan")
-                    with col_btardy2:
-                        b_tardy_reason = st.radio("都合", ["利用者都合", "事業所都合"], horizontal=True, key="b_t_rsn")
-                    
-                    if b_tardy_planned == "計画あり":
-                        col_bps, col_bpe = st.columns(2)
-                        with col_bps:
-                            b_plan_start = st.text_input("計画開始時刻 (HH:MM)", key="b_p_st")
-                        with col_bpe:
-                            b_plan_end = st.text_input("計画終了時刻 (HH:MM)", key="b_p_et")
-                else:
-                    st.info("※遅刻・早退の理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
+                col_btardy1, col_btardy2 = st.columns(2)
+                with col_btardy1:
+                    b_tardy_planned = st.radio("計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_t_plan")
+                with col_btardy2:
+                    b_tardy_reason = st.radio("都合", ["利用者都合", "事業所都合"], horizontal=True, key="b_t_rsn")
+                
+                if b_tardy_planned == "計画あり":
+                    col_bps, col_bpe = st.columns(2)
+                    with col_bps:
+                        b_plan_start = st.text_input("計画開始時刻 (HH:MM)", key="b_p_st")
+                    with col_bpe:
+                        b_plan_end = st.text_input("計画終了時刻 (HH:MM)", key="b_p_et")
             
             st.write("### 中抜け")
             b_is_nakanuke = st.checkbox("中抜け", key="b_nakanuke", disabled=is_b_all_absent)
@@ -1070,19 +1076,17 @@ else:
             b_nakanuke_start = ""
             b_nakanuke_end = ""
             if b_is_nakanuke:
-                if st.session_state.service_type == "生活介護" or is_child_service:
-                    col_bn1, col_bn2 = st.columns(2)
-                    with col_bn1:
-                        b_nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_n_plan")
-                    with col_bn2:
-                        b_nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="b_n_rsn")
+                col_bn1, col_bn2 = st.columns(2)
+                with col_bn1:
+                    b_nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_n_plan")
+                with col_bn2:
+                    b_nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="b_n_rsn")
 
                 col_bns, col_bne = st.columns(2)
                 with col_bns:
                     b_nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="b_n_st")
                 with col_bne:
                     b_nakanuke_end = st.text_input("中抜け終了時刻 (HH:MM)", key="b_n_et")
-                st.info("※中抜けの理由や詳細は、必要に応じて「特記事項」欄へ記入してください")
             
             st.write("### サービス提供状況")
             if b_is_tardy_early or b_is_nakanuke:
@@ -1551,13 +1555,12 @@ else:
                         gb.configure_column("遅刻・早退", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]}, width=110)
                         gb.configure_column("中抜け", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]}, width=110)
                         
-                        if st.session_state.service_type == "生活介護" or is_child_service:
-                            gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
-                            gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
-                            gb.configure_column("計画開始時刻", width=120)
-                            gb.configure_column("計画終了時刻", width=120)
-                            gb.configure_column("中抜け計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
-                            gb.configure_column("中抜け都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
+                        gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
+                        gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
+                        gb.configure_column("計画開始時刻", width=120)
+                        gb.configure_column("計画終了時刻", width=120)
+                        gb.configure_column("中抜け計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
+                        gb.configure_column("中抜け都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
                             
                         gb.configure_column("中抜け開始時刻", width=140)
                         gb.configure_column("中抜け終了時刻", width=140)
