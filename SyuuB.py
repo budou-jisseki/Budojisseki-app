@@ -1,4 +1,10 @@
-﻿import json
+﻿# ==========================================
+# System: SyuuB.py (本番稼働用)
+# Version: 1.2.0
+# Last Update: 2026-11-04
+# Notes: 生活介護の遅刻早退・中抜け・計画性の記録対応、編集画面の選択肢化
+# ==========================================
+import json
 import streamlit as st
 import pandas as pd
 import gspread
@@ -34,7 +40,7 @@ COLUMNS_ADULT = [
     '送迎往路', '送迎復路', '食事提供', '食事量',
     '体調', '作業の取り組み', '精神や情緒', '特別な支援', '特記事項',
     '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
-    '中抜け開始時刻', '中抜け終了時刻'
+    '中抜け', '中抜け計画', '中抜け都合', '中抜け開始時刻', '中抜け終了時刻'
 ]
 
 COLUMNS_CHILD = [
@@ -43,7 +49,7 @@ COLUMNS_CHILD = [
     '送迎往路', '送迎復路', '食事提供', '食事量', 'おやつ提供', 'おやつ量',
     '検温', '体調', '排泄', '活動の様子', '機嫌・情緒', '特別な支援', '特記事項',
     '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻',
-    '中抜け開始時刻', '中抜け終了時刻'
+    '中抜け', '中抜け計画', '中抜け都合', '中抜け開始時刻', '中抜け終了時刻'
 ]
 
 CONDITION_OPTS = ['良好', '普通', '不良', '服薬忘れあり', 'その他']
@@ -800,9 +806,18 @@ else:
 
         st.write("### 中抜け")
         is_nakanuke = st.checkbox("中抜け", key="nakanuke_new", disabled=is_all_absent)
+        nakanuke_planned = ""
+        nakanuke_reason = ""
         nakanuke_start = ""
         nakanuke_end = ""
         if is_nakanuke:
+            if st.session_state.service_type == "生活介護" or is_child_service:
+                col_n1, col_n2 = st.columns(2)
+                with col_n1:
+                    nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="n_plan_new")
+                with col_n2:
+                    nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="n_rsn_new")
+            
             col_ns, col_ne = st.columns(2)
             with col_ns:
                 nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="n_st_new")
@@ -938,6 +953,9 @@ else:
                         '都合': "" if is_all_absent else (tardy_reason if is_tardy_early else ""),
                         '計画開始時刻': "" if is_all_absent else (plan_start if (is_tardy_early and tardy_planned == "計画あり") else ""),
                         '計画終了時刻': "" if is_all_absent else (plan_end if (is_tardy_early and tardy_planned == "計画あり") else ""),
+                        '中抜け': "" if is_all_absent else ("〇" if is_nakanuke else ""),
+                        '中抜け計画': "" if is_all_absent else (nakanuke_planned if is_nakanuke else ""),
+                        '中抜け都合': "" if is_all_absent else (nakanuke_reason if is_nakanuke else ""),
                         '中抜け開始時刻': "" if is_all_absent else nakanuke_start,
                         '中抜け終了時刻': "" if is_all_absent else nakanuke_end
                     }
@@ -954,7 +972,7 @@ else:
                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                         write_system_log(g_client, "新規入力", client_name, 1)
                         st.session_state.success_msg = f'{client_name} さんの実績を記録しました'
-                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'temp_new', 'exc_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new']
+                        reset_keys = ['st_new', 'et_new', 'meal_new', 'meal_amt_new', 'snack_new', 'snack_amt_new', 'temp_new', 'exc_new', 'full_ab_new', 'plan_ab_new', 'to_new', 'tr_new', 'cond_new', 'eng_new', 'men_new', 'sup_new', 'remarks_new', 'ab_reason_new', 'ab_action_new', 'tardy_new', 'nakanuke_new', 't_plan_new', 't_rsn_new', 'p_st_new', 'p_et_new', 'n_st_new', 'n_et_new', 'n_plan_new', 'n_rsn_new']
                         for k in reset_keys:
                             if k in st.session_state:
                                 del st.session_state[k]
@@ -1047,9 +1065,18 @@ else:
             
             st.write("### 中抜け")
             b_is_nakanuke = st.checkbox("中抜け", key="b_nakanuke", disabled=is_b_all_absent)
+            b_nakanuke_planned = ""
+            b_nakanuke_reason = ""
             b_nakanuke_start = ""
             b_nakanuke_end = ""
             if b_is_nakanuke:
+                if st.session_state.service_type == "生活介護" or is_child_service:
+                    col_bn1, col_bn2 = st.columns(2)
+                    with col_bn1:
+                        b_nakanuke_planned = st.radio("中抜け計画の有無", ["計画あり", "計画なし"], horizontal=True, key="b_n_plan")
+                    with col_bn2:
+                        b_nakanuke_reason = st.radio("中抜け都合", ["利用者都合", "事業所都合"], horizontal=True, key="b_n_rsn")
+
                 col_bns, col_bne = st.columns(2)
                 with col_bns:
                     b_nakanuke_start = st.text_input("中抜け開始時刻 (HH:MM)", key="b_n_st")
@@ -1227,6 +1254,9 @@ else:
                                         '都合': "" if is_b_all_absent else (b_tardy_reason if b_is_tardy_early else ""),
                                         '計画開始時刻': "" if is_b_all_absent else (b_plan_start if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
                                         '計画終了時刻': "" if is_b_all_absent else (b_plan_end if (b_is_tardy_early and b_tardy_planned == "計画あり") else ""),
+                                        '中抜け': "" if is_b_all_absent else ("〇" if b_is_nakanuke else ""),
+                                        '中抜け計画': "" if is_b_all_absent else (b_nakanuke_planned if b_is_nakanuke else ""),
+                                        '中抜け都合': "" if is_b_all_absent else (b_nakanuke_reason if b_is_nakanuke else ""),
                                         '中抜け開始時刻': "" if is_b_all_absent else b_nakanuke_start,
                                         '中抜け終了時刻': "" if is_b_all_absent else b_nakanuke_end
                                     }
@@ -1248,7 +1278,7 @@ else:
                                     if update_entire_sheet(g_client, current_sheet_name, updated_df, init_settings):
                                         write_system_log(g_client, "個人・複数日入力", b_client_name, len(new_rows_df))
                                         st.session_state.success_msg = f'{b_client_name} さんの実績を {len(new_rows_df)}件 一括登録しました'
-                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_temp', 'b_exc', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et']
+                                        reset_keys = ['b_st', 'b_et', 'b_meal', 'b_meal_amt', 'b_snack', 'b_snack_amt', 'b_temp', 'b_exc', 'b_full_ab', 'b_plan_ab', 'b_to', 'b_tr', 'b_cond', 'b_eng', 'b_men', 'b_sup', 'remarks_batch', 'b_ab_reason', 'b_ab_action', 'b_tardy', 'b_nakanuke', 'b_t_plan', 'b_t_rsn', 'b_p_st', 'b_p_et', 'b_n_st', 'b_n_et', 'b_n_plan', 'b_n_rsn']
                                         for k in reset_keys:
                                             if k in st.session_state:
                                                 del st.session_state[k]
@@ -1411,6 +1441,9 @@ else:
                                         '都合': "",
                                         '計画開始時刻': "",
                                         '計画終了時刻': "",
+                                        '中抜け': "",
+                                        '中抜け計画': "",
+                                        '中抜け都合': "",
                                         '中抜け開始時刻': "",
                                         '中抜け終了時刻': ""
                                     }
@@ -1514,13 +1547,17 @@ else:
                         gb.configure_column(men_label, cellEditor='agSelectCellEditor', cellEditorParams={'values': men_opts}, width=160)
                         gb.configure_column("特別な支援", cellEditor='agSelectCellEditor', cellEditorParams={'values': sup_opts}, width=180)
                         gb.configure_column("特記事項", width=350)
+                        
                         gb.configure_column("遅刻・早退", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]}, width=110)
+                        gb.configure_column("中抜け", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["〇", ""]}, width=110)
                         
                         if st.session_state.service_type == "生活介護" or is_child_service:
                             gb.configure_column("計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
                             gb.configure_column("都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
                             gb.configure_column("計画開始時刻", width=120)
                             gb.configure_column("計画終了時刻", width=120)
+                            gb.configure_column("中抜け計画", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["計画あり", "計画なし", ""]}, width=110)
+                            gb.configure_column("中抜け都合", cellEditor='agSelectCellEditor', cellEditorParams={'values': ["利用者都合", "事業所都合", ""]}, width=130)
                             
                         gb.configure_column("中抜け開始時刻", width=140)
                         gb.configure_column("中抜け終了時刻", width=140)
@@ -1557,7 +1594,7 @@ else:
                         jscode_on_change = JsCode(f"""
                         function(params) {{
                             if (params.colDef.field === "出欠状況" && params.newValue === "欠席") {{
-                                var cols = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '{eng_label}', '{men_label}', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻'];
+                                var cols = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', '{eng_label}', '{men_label}', '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け', '中抜け計画', '中抜け都合', '中抜け開始時刻', '中抜け終了時刻'];
                                 var is_child = {'true' if is_child_service else 'false'};
                                 if (is_child) {{
                                     cols.push('おやつ提供', 'おやつ量', '検温', '排泄');
@@ -1603,7 +1640,7 @@ else:
                                 current_status = edited_df.at[idx, '出欠状況']
                                 cached_status = original_df.at[idx, '出欠状況'] if idx in original_df.index else ""
                                 
-                                cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け開始時刻', '中抜け終了時刻']
+                                cols_to_clear = ['開始時間', '終了時間', '算定時間数', '送迎往路', '送迎復路', '食事提供', '食事量', '体調', eng_label, men_label, '特別な支援', '遅刻・早退', '計画', '都合', '計画開始時刻', '計画終了時刻', '中抜け', '中抜け計画', '中抜け都合', '中抜け開始時刻', '中抜け終了時刻']
                                 if is_child_service:
                                     cols_to_clear.extend(['おやつ提供', 'おやつ量', '検温', '排泄'])
 
