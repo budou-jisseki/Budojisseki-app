@@ -1,8 +1,8 @@
 ﻿# ==========================================
 # System: SyuuB.py (本番稼働用)
-# Version: 1.2.1
+# Version: 1.2.2
 # Last Update: 2026-11-04
-# Notes: キャッシュ対策のVer表示追加、計画表示の制限解除
+# Notes: Streamlit Cloud環境でのバージョンバッジ表示位置の修正
 # ==========================================
 import json
 import streamlit as st
@@ -20,7 +20,7 @@ import jpholiday
 import calendar
 from st_aggrid import AgGrid, GridOptionsBuilder, DataReturnMode, GridUpdateMode, JsCode
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 # 日本時間（JST）の定義
 JST = timezone(timedelta(hours=+9), 'JST')
@@ -152,7 +152,7 @@ else:
     exc_opts = []
 
 # ==========================================
-# デザイン・UIカスタマイズ・バージョン表示
+# デザイン・UIカスタマイズ
 # ==========================================
 st.markdown(f"""
 <style>
@@ -204,20 +204,6 @@ st.markdown(f"""
         gap: 10px;
     }}
 
-    .version-label {{
-        position: fixed;
-        top: 15px;
-        right: 15px;
-        background-color: {accent_color};
-        color: white;
-        padding: 4px 12px;
-        border-radius: 15px;
-        font-size: 0.85rem;
-        font-weight: bold;
-        z-index: 99999;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    }}
-
     @media (max-width: 768px) {{
         .block-container {{
             max-width: 100vw !important; 
@@ -230,7 +216,6 @@ st.markdown(f"""
         div[data-testid="stDataFrame"] {{ overflow-x: auto !important; width: 100% !important; }}
     }}
 </style>
-<div class="version-label">Ver {APP_VERSION}</div>
 """, unsafe_allow_html=True)
 
 # ==========================================
@@ -647,8 +632,17 @@ def set_date_range(key_name, mode):
         last_last = first_this - timedelta(days=1)
         st.session_state[key_name] = (last_last.replace(day=1), last_last)
 
+# ==========================================
+# タイトル・バージョン表示部分
+# ==========================================
 app_title = f"{st.session_state.service_type} 実績入力" if st.session_state.logged_in else "実績入力システム"
-st.markdown(f'<h1 class="main-title">{app_title}</h1>', unsafe_allow_html=True)
+st.markdown(
+    f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">'
+    f'<h1 class="main-title" style="margin-bottom: 0 !important;">{app_title}</h1>'
+    f'<span style="background-color: {accent_color}; color: white; padding: 4px 12px; border-radius: 15px; font-size: 0.85rem; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Ver {APP_VERSION}</span>'
+    f'</div>', 
+    unsafe_allow_html=True
+)
 
 g_client = get_gspread_client()
 if g_client is None and st.session_state.logged_in:
